@@ -1,4 +1,5 @@
 import click
+from cloudcompose.cluster.cloudinit import CloudInit
 
 @click.group()
 def cli():
@@ -17,3 +18,12 @@ def down():
     destroys an existing cluster
     """
     print "in cluster down command"
+
+@cli.command()
+def build():
+    """
+    builds the cloud_init script
+    """
+    print "in cluster build command"
+    cloud_init = CloudInit('cloud-compose/cloud-compose.yml', 'cloud-compose/test.template.sh')
+    print cloud_init.build()
