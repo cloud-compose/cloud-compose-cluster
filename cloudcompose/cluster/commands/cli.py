@@ -1,5 +1,6 @@
 import click
 from cloudcompose.cluster.cloudinit import CloudInit
+from cloudcompose.config import CloudConfig
 
 @click.group()
 def cli():
@@ -25,5 +26,6 @@ def build():
     builds the cloud_init script
     """
     print "in cluster build command"
-    cloud_init = CloudInit('cloud-compose/cloud-compose.yml', 'cloud-compose/test.template.sh')
-    print cloud_init.build()
+    cloud_config = CloudConfig()
+    cloud_init = CloudInit()
+    print cloud_init.build(cloud_config)
