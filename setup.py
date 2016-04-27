@@ -10,6 +10,7 @@ setup(
     install_requires=[
         'click',
     ],
+    namespace_packages = ['cloudcompose'],
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
     url="https://github.com/cloud-compose/cloud-compose-cluster"
