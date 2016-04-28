@@ -100,19 +100,19 @@ class CloudController:
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
 
     def _tag_instance(self, tags, node_id, instance_id):
-        instance_tags = self._build_instance_tags(self.cluster_name, node_id, tags)
+        instance_tags = self._build_instance_tags(node_id, tags)
         self._ec2_create_tags(Resources=[instance_id], Tags=instance_tags)
-        print 'created %s-%s (%s)' % (cluster_name, node_id, instance_id)
+        print 'created %s-%s (%s)' % (self.cluster_name, node_id, instance_id)
 
-    def _build_instance_tags(self, cluster_name, node_id, tags):
+    def _build_instance_tags(self, node_id, tags):
         instance_tags = [
             {
                 'Key': 'ClusterName',
-                'Value' : cluster_name
+                'Value': self.cluster_name
             },
             {
                 'Key': 'Name',
-                'Value' : ('%s-%s' % (cluster_name, node_id)),
+                'Value' : ('%s-%s' % (self.cluster_name, node_id)),
             },
             {
                 'Key': 'NodeId',
