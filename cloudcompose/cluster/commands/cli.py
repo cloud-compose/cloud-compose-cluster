@@ -1,5 +1,6 @@
 import click
 from cloudcompose.cluster.cloudinit import CloudInit
+from cloudcompose.cluster.aws.cloudcontroller import CloudController
 from cloudcompose.config import CloudConfig
 
 @click.group()
@@ -11,7 +12,9 @@ def up():
     """
     creates a new cluster
     """
-    print "in cluster up command"
+    cloud_config = CloudConfig()
+    cloud_controller = CloudController()
+    cloud_controller.up(cloud_config)
 
 @cli.command()
 def down():

@@ -5,7 +5,7 @@ from pprint import pprint
 
 class CloudInit():
     def build(self, cloud_config):
-        config_dir, config_data = cloud_config.config_data('cluster')
+        config_data, config_dir = cloud_config.config_data('cluster')
         template_dir = join(config_dir, 'templates')
         self._add_docker_compose(template_dir, config_data)
         #pprint(config_data)
