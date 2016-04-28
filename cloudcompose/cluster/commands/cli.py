@@ -21,7 +21,9 @@ def down():
     """
     destroys an existing cluster
     """
-    print "in cluster down command"
+    cloud_config = CloudConfig()
+    cloud_controller = CloudController()
+    cloud_controller.down(cloud_config)
 
 @cli.command()
 def build():
