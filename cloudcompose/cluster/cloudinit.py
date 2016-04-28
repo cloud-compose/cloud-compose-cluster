@@ -4,11 +4,17 @@ from os.path import join
 from pprint import pprint
 
 class CloudInit():
-    def build(self, cloud_config):
-        config_data, config_dir = cloud_config.config_data('cluster')
+    def __init__(self, cloud_config):
+        self.cloud_config = cloud_config
+
+    def build(self, **kwargs):
+        config_data, config_dir = self.cloud_config.config_data('cluster')
+
+        for key, value in kwargs.iteritems():
+            config_data['_' + key] = value
+
         template_dir = join(config_dir, 'templates')
         self._add_docker_compose(template_dir, config_data)
-        #pprint(config_data)
         return self._render_template(template_dir, config_data['template'], config_data)
 
     def _add_docker_compose(self, template_dir, config_data):

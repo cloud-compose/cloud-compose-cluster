@@ -1,4 +1,3 @@
-from pprint import pprint
 from os import environ
 import logging
 from cloudcompose.exceptions import CloudComposeException
@@ -8,9 +7,13 @@ from time import sleep
 from retrying import retry
 
 class CloudController:
-    def __init__(self):
+    def __init__(self, cloud_config):
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
+        self.cloud_config = cloud_config
+        config_data, _ = cloud_config.config_data('cluster')
+        self.aws = config_data["aws"]
+        self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
 
     def _get_ec2_client(self):
@@ -23,18 +26,12 @@ class CloudController:
             raise CloudComposeException('Missing %s environment variable' % key)
         return environ[key]
 
-    def up(self, cloud_config):
-        #TODO create the cloudwatch log group
-        #TODO build cloud_init script
-        config_data, _ = cloud_config.config_data('cluster')
-        aws = config_data["aws"]
-        block_device_map = self._build_block_device_map(aws)
-        self._create_instances(config_data['name'], aws, block_device_map)
+    def up(self, cloud_init):
+        block_device_map = self._build_block_device_map()
+        self._create_instances(cloud_init, block_device_map)
 
-    def down(self, cloud_config):
-        config_data, _ = cloud_config.config_data('cluster')
-        aws = config_data["aws"]
-        ips = [node['ip'] for node in aws.get('nodes', [])]
+    def down(self):
+        ips = [node['ip'] for node in self.aws.get('nodes', [])]
         instance_ids = self._instance_ids_from_private_ip(ips)
         if len(instance_ids) > 0:
             self._ec2_terminate_instances(InstanceIds=instance_ids)
@@ -55,36 +52,43 @@ class CloudController:
 
         return instance_ids
 
-    def _create_instances(self, cluster_name, aws, block_device_map):
-        ami = aws['ami']
-        keypair = aws['keypair']
-        security_groups = aws['security_groups'].split(',')
-        instance_type = aws['instance_type']
-        terminate_protection = aws.get('terminate_protection', True)
-        detailed_monitoring = aws.get('detailed_monitoring', False)
-        ebs_optimized = aws.get('ebs_optimized', False)
+    def _create_instance_args(self, block_device_map):
+        ami = self.aws['ami']
+        keypair = self.aws['keypair']
+        security_groups = self.aws['security_groups'].split(',')
+        instance_type = self.aws['instance_type']
+        terminate_protection = self.aws.get('terminate_protection', True)
+        detailed_monitoring = self.aws.get('detailed_monitoring', False)
+        ebs_optimized = self.aws.get('ebs_optimized', False)
+        return {
+            'ImageId': ami,
+            'MinCount': 1,
+            'MaxCount': 1,
+            'KeyName': keypair,
+            'SecurityGroupIds': security_groups,
+            'InstanceType': instance_type,
+            'BlockDeviceMappings': block_device_map,
+            'DisableApiTermination': terminate_protection,
+            'Monitoring': { 'Enabled': detailed_monitoring },
+            'EbsOptimized': ebs_optimized
+        }
+
+    def _create_instances(self, cloud_init, block_device_map):
         instance_ids = {}
-        for node in aws.get("nodes", []):
-            #TODO need to regenerate the cloud_init script again with NODE_ID set
+        kwargs = self._create_instance_args(block_device_map)
+        for node in self.aws.get("nodes", []):
+            kwargs['SubnetId'] = node["subnet"]
+            kwargs['PrivateIpAddress'] = node["ip"]
+
+            cloud_init_script = cloud_init.build(node_id=node['id'])
+            kwargs['UserData'] = cloud_init_script
+
             max_retries = 6
             retries = 0
             while retries < max_retries:
                 retries += 1
                 try:
-                    response = self._ec2_run_instances(ImageId=ami,
-                                    MinCount=1,
-                                    MaxCount=1,
-                                    KeyName=keypair,
-                                    SecurityGroupIds=security_groups,
-                                    InstanceType=instance_type,
-                                    SubnetId=node["subnet"],
-                                    PrivateIpAddress=node["ip"],
-                                    BlockDeviceMappings=block_device_map,
-                                    DisableApiTermination=terminate_protection,
-                                    Monitoring={
-                                        "Enabled": detailed_monitoring
-                                    },
-                                    EbsOptimized=ebs_optimized)
+                    response = self._ec2_run_instances(**kwargs)
                     instance_id = response['Instances'][0]['InstanceId']
                     instance_ids[node['id']] = instance_id
                     break
@@ -93,10 +97,10 @@ class CloudController:
                         print(ex.response["Error"]["Message"])
 
         for node_id, instance_id in instance_ids.iteritems():
-            self._tag_instance(cluster_name, aws.get("tags", {}), node_id, instance_id)
+            self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
 
-    def _tag_instance(self, cluster_name, tags, node_id, instance_id):
-        instance_tags = self._build_instance_tags(cluster_name, node_id, tags)
+    def _tag_instance(self, tags, node_id, instance_id):
+        instance_tags = self._build_instance_tags(self.cluster_name, node_id, tags)
         self._ec2_create_tags(Resources=[instance_id], Tags=instance_tags)
         print 'created %s-%s (%s)' % (cluster_name, node_id, instance_id)
 
@@ -125,10 +129,10 @@ class CloudController:
         return instance_tags
 
 
-    def _build_block_device_map(self, aws):
+    def _build_block_device_map(self):
         block_device_map = []
-        for volume in aws.get("volumes", []):
-            block_device_map.append(self._create_volume_config(aws['ami'], volume))
+        for volume in self.aws.get("volumes", []):
+            block_device_map.append(self._create_volume_config(self.aws['ami'], volume))
 
         return block_device_map
 
