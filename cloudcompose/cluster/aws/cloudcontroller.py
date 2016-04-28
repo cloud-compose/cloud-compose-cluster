@@ -26,9 +26,9 @@ class CloudController:
             raise CloudComposeException('Missing %s environment variable' % key)
         return environ[key]
 
-    def up(self, cloud_init):
+    def up(self, cloud_init=None):
         block_device_map = self._build_block_device_map()
-        self._create_instances(cloud_init, block_device_map)
+        self._create_instances(block_device_map, cloud_init)
 
     def down(self):
         ips = [node['ip'] for node in self.aws.get('nodes', [])]
@@ -73,15 +73,16 @@ class CloudController:
             'EbsOptimized': ebs_optimized
         }
 
-    def _create_instances(self, cloud_init, block_device_map):
+    def _create_instances(self, block_device_map, cloud_init):
         instance_ids = {}
         kwargs = self._create_instance_args(block_device_map)
         for node in self.aws.get("nodes", []):
             kwargs['SubnetId'] = node["subnet"]
             kwargs['PrivateIpAddress'] = node["ip"]
 
-            cloud_init_script = cloud_init.build(node_id=node['id'])
-            kwargs['UserData'] = cloud_init_script
+            if cloud_init:
+                cloud_init_script = cloud_init.build(node_id=node['id'])
+                kwargs['UserData'] = cloud_init_script
 
             max_retries = 6
             retries = 0

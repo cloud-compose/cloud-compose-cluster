@@ -8,14 +8,19 @@ def cli():
     pass
 
 @cli.command()
-def up():
+@click.option('--cloud-init/--no-cloud-init', default=True)
+def up(cloud_init):
     """
     creates a new cluster
     """
     cloud_config = CloudConfig()
-    cloud_init = CloudInit(cloud_config)
+    ci = None
+
+    if cloud_init:
+        ci = CloudInit(cloud_config)
+
     cloud_controller = CloudController(cloud_config)
-    cloud_controller.up(cloud_init)
+    cloud_controller.up(ci)
 
 @cli.command()
 def down():
