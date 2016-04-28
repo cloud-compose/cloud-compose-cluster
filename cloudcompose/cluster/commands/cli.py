@@ -25,7 +25,6 @@ def build():
     """
     builds the cloud_init script
     """
-    print "in cluster build command"
     cloud_config = CloudConfig()
     cloud_init = CloudInit()
     print cloud_init.build(cloud_config)

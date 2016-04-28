@@ -8,8 +8,8 @@ class CloudInit():
         config_dir, config_data = cloud_config.config_data('cluster')
         template_dir = join(config_dir, 'templates')
         self._add_docker_compose(template_dir, config_data)
-        pprint(config_data)
-        print self._render_template(template_dir, config_data['template'], config_data)
+        #pprint(config_data)
+        return self._render_template(template_dir, config_data['template'], config_data)
 
     def _add_docker_compose(self, template_dir, config_data):
         docker_compose = DockerCompose()
@@ -20,5 +20,4 @@ class CloudInit():
 
     def _render_template(self, template_dir, template_file, template_data):
         template = Template()
-        print template.render(join(template_dir, template_file), template_data)
-
+        return template.render(join(template_dir, template_file), template_data)
