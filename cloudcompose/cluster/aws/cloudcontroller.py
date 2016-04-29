@@ -77,8 +77,9 @@ class CloudController:
         instance_ids = {}
         kwargs = self._create_instance_args(block_device_map)
         for node in self.aws.get("nodes", []):
+            private_ip = node["ip"]
             kwargs['SubnetId'] = node["subnet"]
-            kwargs['PrivateIpAddress'] = node["ip"]
+            kwargs['PrivateIpAddress'] = private_ip
 
             if cloud_init:
                 cloud_init_script = cloud_init.build(node_id=node['id'])
@@ -89,9 +90,10 @@ class CloudController:
             while retries < max_retries:
                 retries += 1
                 try:
-                    response = self._ec2_run_instances(**kwargs)
-                    instance_id = response['Instances'][0]['InstanceId']
-                    instance_ids[node['id']] = instance_id
+                    response = self._ec2_run_instances(private_ip, **kwargs)
+                    if response:
+                        instance_id = response['Instances'][0]['InstanceId']
+                        instance_ids[node['id']] = instance_id
                     break
                 except botocore.exceptions.ClientError as ex:
                     if ex.response["Error"]["Code"] == 'InvalidIPAddress.InUse':
@@ -99,6 +101,7 @@ class CloudController:
 
         for node_id, instance_id in instance_ids.iteritems():
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
+
 
     def _tag_instance(self, tags, node_id, instance_id):
         instance_tags = self._build_instance_tags(node_id, tags)
@@ -174,8 +177,32 @@ class CloudController:
            exception.response["Error"]["Code"] == 'InvalidIPAddress.InUse'
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
-    def _ec2_run_instances(self, **kwargs):
-        return self.ec2.run_instances(**kwargs)
+    def _find_existing_instance_id(self, private_ip):
+        filters = [
+            {"Name": "instance-state-name", "Values": ["running", "pending"]},
+            {"Name": "private-ip-address", "Values": [private_ip]},
+            {"Name": "tag:ClusterName", "Values": [self.cluster_name]}
+        ]
+
+        instances = self._ec2_describe_instances(Filters=filters)
+        for reservation in instances.get('Reservations', []):
+            for instance in reservation.get('Instances', []):
+                if 'InstanceId' in instance:
+                    return instance['InstanceId']
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_run_instances(self, private_ip, **kwargs):
+        try:
+            response = self.ec2.run_instances(**kwargs)
+        except botocore.exceptions.ClientError as ex:
+            if ex.response["Error"]["Code"] == "InvalidIPAddress.InUse":
+                instance_id = self._find_existing_instance_id(private_ip)
+                if instance_id:
+                    print "skipping %s (%s)" % (private_ip, instance_id)
+                    return None
+            raise ex
+
+        return response
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_create_tags(self, **kwargs):
