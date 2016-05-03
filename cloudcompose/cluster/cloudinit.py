@@ -25,5 +25,5 @@ class CloudInit():
         config_data['docker_compose']['override_yaml'] = docker_compose_override
 
     def _render_template(self, template_dir, template_file, template_data):
-        template = Template()
-        return template.render(join(template_dir, template_file), template_data)
+        template = Template(template_dir)
+        return template.render(template_file, template_data)

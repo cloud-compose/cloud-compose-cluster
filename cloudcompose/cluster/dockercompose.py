@@ -5,7 +5,7 @@ class DockerCompose:
     def __init__(self):
         self.config_dirs = ['cloud-compose', '.']
         self.docker_compose_files = ['docker-compose.yml', 'docker-compose.yaml']
-        self.docker_compose_override_files = ['docker-compose.override.template.yml', 'docker-compose.override.template.yaml']
+        self.docker_compose_override_files = ['docker-compose.override.yml', 'docker-compose.override.yaml']
 
     def yaml_files(self, config_data):
         docker_compose = self._read_docker_compose()
@@ -31,8 +31,8 @@ class DockerCompose:
                 for docker_compose_override_file in self.docker_compose_override_files:
                     template_file = join(template_dir, docker_compose_override_file)
                     if isfile(template_file):
-                        return self._render_template(template_file, config_data)
+                        return self._render_template(template_dir, docker_compose_override_file, config_data)
 
-    def _render_template(self, template_file, template_data):
-        template = Template()
+    def _render_template(self, template_dir, template_file, template_data):
+        template = Template(template_dir)
         return template.render(template_file, template_data)
