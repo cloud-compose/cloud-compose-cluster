@@ -1,4 +1,4 @@
-from cloudcompose.template import Template
+from cloudcompose.cluster.template import Template
 from os.path import join, isfile, isdir, split
 
 class DockerCompose:

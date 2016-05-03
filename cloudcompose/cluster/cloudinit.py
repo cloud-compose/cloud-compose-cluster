@@ -1,4 +1,4 @@
-from cloudcompose.template import Template
+from cloudcompose.cluster.template import Template
 from cloudcompose.cluster.dockercompose import DockerCompose
 from os.path import join, split
 from pprint import pprint
