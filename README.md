@@ -3,11 +3,11 @@ The Cloud Compose cluster plugin simplifies the process of running Docker images
 
 1. docker-compose.yml for local testing of Docker images
 1. docker-compose.override.yml for overriding values specific to cloud environments 
-1. cluster.sh script for bootstrappig a new cloud server
+1. cluster.sh script for bootstrapping a new cloud server
 
 For an example project that uses Cloud Compose see [Docker MongoDB](https://github.com/washingtonpost/docker-mongodb).
 
-Once you have the configuration files run the follow commands to start the cluster: 
+Once you have the configuration files run the following commands to start the cluster: 
 ```
 cd my-configs
 pip install cloud-compose cloud-compose-cluster
@@ -28,6 +28,7 @@ If you are using multiple AWS accounts it is convenient to use [Envdir](https://
 
 ## Configuration 
 To understand the purpose of each configuration file consider the follow examples with an explanation of each element.
+
 ### cloud-compose.yml
 ```yaml
 cluster:
@@ -115,7 +116,6 @@ The ``keypair`` is the SSH key that will be added to the EC2 servers.
 ##### volumes
 The ``volumes`` is a list of volumes that should be added to the instance. All volumes have a ``size`` attribute which is a number followed by a unit of M, G, or T for megabytes, gigabytes, or terabytes.
 
-
 ###### root
 The ``root`` volume is the main volume for the server.  Only the ``size`` attribute can be set for this volume. The ``root`` volume is automatically mounted on server start.
 
@@ -129,7 +129,7 @@ If you need to keep significant data on the instance create a data volume rather
 Additional ``tags`` that should be added to the EC2 instance.
 
 #### nodes
-The ``nodes`` is a list of servers that make up the cluster.  Autoscaling groups are not recommended for database server because the cluster membership can changing quickly which can lead to data loss especially. Since many database work better with static IP addresses, using static IP addresses is the default behavior of the cluster plugin. It is recommend that a separate subnet be created for servers using static IP addresses to avoid collisions with auto provisioned servers using dynamic IP addresses. Make sure to add node for each subnet and use at least three nodes in three different availability zones for maximum redundancy. 
+The ``nodes`` is a list of servers that make up the cluster.  Autoscaling groups are not recommended for database servers because the cluster membership can change quickly which can lead to data loss. Since many databases work better with static IP addresses, using static IP addresses is the default behavior of the cluster plugin. It is recommend that a separate subnet be created for servers using static IP addresses to avoid collisions with auto provisioned servers using dynamic IP addresses. Make sure to add a node for each subnet and use at least three nodes in three different availability zones for maximum redundancy. 
 
 ## Extending
 The cluster plugin was designed to support many different systems including MongoDB, Kafka, and Zookeeper, but it does require some scripting and configuration first.  See the [Docker MongoDB](https://github.com/washingtonpost/docker-mongodb) for an example project. You can add additional server platforms by creating a similar project and adapting the configuration and script files as needed.
