@@ -95,7 +95,7 @@ The ``ami`` is the Amazon Machine Image to start the EC2 servers from before ins
 The ``username`` is used by the ``cluster.sh`` script to start the Docker containers using that user account.
 
 ##### terminate_protection (optional)
-The ``terminate_protection`` is an EC2 feature that prevents accidently termination of servers. If this value is not provided it defaults to true, which is the recommended setting for production clusters.
+``terminate_protection`` is an EC2 feature that prevents accidently termination of servers. If this value is not provided it defaults to true, which is the recommended setting for production clusters.
 
 ##### security
 The list of ``security_groups`` that should be added to the EC2 servers.
@@ -116,20 +116,20 @@ The ``keypair`` is the SSH key that will be added to the EC2 servers.
 The ``volumes`` is a list of volumes that should be added to the instance. All volumes have a ``size`` attribute which is a number followed by a unit of M, G, or T for megabytes, gigabytes, or terabytes.
 
 
-##### root
-The ``root`` volume is the main volume for the server. 
+###### root
+The ``root`` volume is the main volume for the server.  Only the ``size`` attribute can be set for this volume. The ``root`` volume is automatically mounted on server start.
 
-##### docker
-Centos/RHEL servers that use Docker with device-mapper and LVM2, can create a LVM2 volume for use in configuring Docker image and metadata storage.
+###### docker
+The ``docker`` volume is an LVM2 designed for use by Centos/RHEL servers that use the device-mapper backend for storing Docker image and metadata.
 
-##### data
-If you need to keep significant data on the instance it is recommend to create a data volume rather than putting the data on this volume because it makes restores much easier. The root volume does not accept any other parameters besides size. The data volume should also have mount point which is then mounted in your Docker container as a volume.
+###### data
+If you need to keep significant data on the instance create a data volume rather than putting the data on the root volume. This will make backups and restores much easier since the operating system files are not mixed with the data files. The ``data`` volume should also have mount point which is then mounted in your Docker container as a volume.
 
 #### tags
-Additional ``tags`` that should be added to the EC2 instance can be added to this section.
+Additional ``tags`` that should be added to the EC2 instance.
 
 #### nodes
-The ``nodes`` is a list of servers for the cluster.  Autoscaling groups are not recommended for database server because the cluster membership can changing quickly which can lead to data loss if the replication is not able to catch up in time. Since many database work better with static IP addresses, this is the default behavior of the cluster plugin. It is recommend that a separate subnet be just for servers using static IP addresses. Then add a node in each of these subnets and make sure you are running in at least 2-3 availability zones for maximum redundancy. 
+The ``nodes`` is a list of servers that make up the cluster.  Autoscaling groups are not recommended for database server because the cluster membership can changing quickly which can lead to data loss especially. Since many database work better with static IP addresses, using static IP addresses is the default behavior of the cluster plugin. It is recommend that a separate subnet be created for servers using static IP addresses to avoid collisions with auto provisioned servers using dynamic IP addresses. Make sure to add node for each subnet and use at least three nodes in three different availability zones for maximum redundancy. 
 
 ## Extending
 The cluster plugin was designed to support many different systems including MongoDB, Kafka, and Zookeeper, but it does require some scripting and configuration first.  See the (Docker MongoDB)[https://github.com/washingtonpost/docker-mongodb] for an example project. You can add additional server platforms by creating a similar project and adapting the configuration and script files as needed.
