@@ -5,28 +5,29 @@ from pprint import pprint
 
 class CloudInit():
     def __init__(self, cloud_config, base_dir='.'):
-        self.cloud_config = cloud_config
         self.base_dir = base_dir
+        self.cloud_config = cloud_config
+        self.template_file = 'cluster.sh'
 
     def build(self, **kwargs):
         config_data = self.cloud_config.config_data('cluster')
+        raw_search_path = config_data['search_path']
+        raw_search_path.insert(0, '.')
+        search_path = [join(self.base_dir, path) for path in raw_search_path]
 
         for key, value in kwargs.iteritems():
             config_data['_' + key] = value
 
-        template_dir, template_file = split(config_data['template'])
-        self._add_docker_compose(template_dir, config_data)
-        return self._render_template(join(self.base_dir, template_dir), template_file, config_data)
+        self._add_docker_compose(config_data, search_path)
+        return self._render_template(config_data, search_path)
 
-    def _add_docker_compose(self, template_dir, config_data):
-        docker_compose = DockerCompose(config_data['docker_compose'],
-                                       config_data['docker_compose_override'],
-                                       self.base_dir)
+    def _add_docker_compose(self, config_data, search_path):
+        docker_compose = DockerCompose(search_path)
         docker_compose, docker_compose_override = docker_compose.yaml_files(config_data)
         config_data['docker_compose'] = {}
         config_data['docker_compose']['yaml'] = docker_compose
         config_data['docker_compose']['override_yaml'] = docker_compose_override
 
-    def _render_template(self, template_dir, template_file, template_data):
-        template = Template(template_dir)
-        return template.render(template_file, template_data)
+    def _render_template(self, template_data, search_path):
+        template = Template(search_path)
+        return template.render(self.template_file, template_data)

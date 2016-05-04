@@ -13,6 +13,9 @@ class CloudInitTest(TestCase):
     def test_subtree_config(self):
         self._cloud_init_comparator('subtree')
 
+    def test_subtree_with_overrides_config(self):
+        self._cloud_init_comparator('subtree-with-overrides')
+
     def _cloud_init_comparator(self, config_dir):
         base_dir = join(TEST_ROOT, config_dir)
         cloud_config = CloudConfig(base_dir)

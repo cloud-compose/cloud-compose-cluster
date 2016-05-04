@@ -1,7 +1,9 @@
 cluster:
-  name: simple
+  name: subtree 
   search_path:
     - templates
+    - docker-mongodb
+    - docker-mongodb/cloud-compose/templates
   aws:
     volumes:
       - name: data
@@ -13,4 +15,4 @@ cluster:
           mount: /data/mongodb
     nodes:
       - id: 0
-        ip: 10.0.10.10
+        ip: 10.0.11.10
