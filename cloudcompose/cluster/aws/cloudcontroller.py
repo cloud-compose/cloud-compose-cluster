@@ -98,6 +98,8 @@ class CloudController:
                 except botocore.exceptions.ClientError as ex:
                     if ex.response["Error"]["Code"] == 'InvalidIPAddress.InUse':
                         print(ex.response["Error"]["Message"])
+                    else:
+                        print(ex.response["Error"]["Message"])
 
         for node_id, instance_id in instance_ids.iteritems():
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
