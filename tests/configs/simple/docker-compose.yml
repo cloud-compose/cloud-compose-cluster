@@ -1,0 +1,5 @@
+mongodb:
+  container_name: mongodb 
+  command: --shardsvr --replSet rs0 --dbpath /data/db
+  ports:
+    - "27018:27018"
