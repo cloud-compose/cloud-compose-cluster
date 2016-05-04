@@ -11,7 +11,7 @@ class CloudController:
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
-        config_data, _ = cloud_config.config_data('cluster')
+        config_data = cloud_config.config_data('cluster')
         self.aws = config_data["aws"]
         self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
