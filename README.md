@@ -132,7 +132,7 @@ Additional ``tags`` that should be added to the EC2 instance.
 The ``nodes`` is a list of servers that make up the cluster.  Autoscaling groups are not recommended for database server because the cluster membership can changing quickly which can lead to data loss especially. Since many database work better with static IP addresses, using static IP addresses is the default behavior of the cluster plugin. It is recommend that a separate subnet be created for servers using static IP addresses to avoid collisions with auto provisioned servers using dynamic IP addresses. Make sure to add node for each subnet and use at least three nodes in three different availability zones for maximum redundancy. 
 
 ## Extending
-The cluster plugin was designed to support many different systems including MongoDB, Kafka, and Zookeeper, but it does require some scripting and configuration first.  See the (Docker MongoDB)[https://github.com/washingtonpost/docker-mongodb] for an example project. You can add additional server platforms by creating a similar project and adapting the configuration and script files as needed.
+The cluster plugin was designed to support many different systems including MongoDB, Kafka, and Zookeeper, but it does require some scripting and configuration first.  See the [Docker MongoDB](https://github.com/washingtonpost/docker-mongodb) for an example project. You can add additional server platforms by creating a similar project and adapting the configuration and script files as needed.
 
 ## Contributing 
 To work on the code locally, checkout both cloud-compose and cloud-compose-cluster to the same parent directory. Then use a virtualenv and pip install editable to start working on them locally.
