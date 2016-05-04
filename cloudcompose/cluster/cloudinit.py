@@ -4,8 +4,9 @@ from os.path import join, split
 from pprint import pprint
 
 class CloudInit():
-    def __init__(self, cloud_config):
+    def __init__(self, cloud_config, base_dir='.'):
         self.cloud_config = cloud_config
+        self.base_dir = base_dir
 
     def build(self, **kwargs):
         config_data = self.cloud_config.config_data('cluster')
@@ -15,10 +16,12 @@ class CloudInit():
 
         template_dir, template_file = split(config_data['template'])
         self._add_docker_compose(template_dir, config_data)
-        return self._render_template(template_dir, template_file, config_data)
+        return self._render_template(join(self.base_dir, template_dir), template_file, config_data)
 
     def _add_docker_compose(self, template_dir, config_data):
-        docker_compose = DockerCompose(config_data['docker_compose'], config_data['docker_compose_override'])
+        docker_compose = DockerCompose(config_data['docker_compose'],
+                                       config_data['docker_compose_override'],
+                                       self.base_dir)
         docker_compose, docker_compose_override = docker_compose.yaml_files(config_data)
         config_data['docker_compose'] = {}
         config_data['docker_compose']['yaml'] = docker_compose

@@ -2,8 +2,11 @@ from cloudcompose.cluster.template import Template
 from os.path import join, isfile, isdir, split
 
 class DockerCompose:
-    def __init__(self, docker_compose_path=None, docker_compose_override_path=None):
+    def __init__(self, docker_compose_path=None,
+                 docker_compose_override_path=None,
+                 base_dir='.'):
         self.config_dirs = ['cloud-compose', '.']
+        self.base_dir = base_dir
         self.docker_compose_path = docker_compose_path
         self.docker_compose_override_path = docker_compose_override_path
         self.docker_compose_files = ['docker-compose.yml', 'docker-compose.yaml']
@@ -18,7 +21,7 @@ class DockerCompose:
         if not self.docker_compose_path:
             self.docker_compose_path = self._find_docker_compose_path()
 
-        return self._read_file(self.docker_compose_path)
+        return self._read_file(join(self.base_dir, self.docker_compose_path))
 
     def _find_docker_compose_path(self):
         for docker_compose_dir in ['.', '..']:
@@ -36,7 +39,7 @@ class DockerCompose:
         if not self.docker_compose_override_path:
             self.docker_compose_override_path = self._find_docker_compose_override_path()
         template_dir, template_file = split(self.docker_compose_override_path)
-        return self._render_template(template_dir, template_file, config_data)
+        return self._render_template(join(self.base_dir, template_dir), template_file, config_data)
 
     def _find_docker_compose_override_path(self):
         for config_dir in self.config_dirs:
