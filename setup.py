@@ -21,6 +21,12 @@ setup(
         'retrying>=1.3.3',
         'six>=1.10.0'
     ],
+    setup_requires=[
+        'pytest-runner'
+    ],
+    tests_require=[
+        'pytest',
+    ],
     namespace_packages = ['cloudcompose'],
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
