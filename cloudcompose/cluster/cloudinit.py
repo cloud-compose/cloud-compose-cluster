@@ -1,29 +1,33 @@
-from cloudcompose.template import Template
+from cloudcompose.cluster.template import Template
 from cloudcompose.cluster.dockercompose import DockerCompose
-from os.path import join
+from os.path import join, split
 from pprint import pprint
 
 class CloudInit():
-    def __init__(self, cloud_config):
+    def __init__(self, cloud_config, base_dir='.'):
+        self.base_dir = base_dir
         self.cloud_config = cloud_config
+        self.template_file = 'cluster.sh'
 
     def build(self, **kwargs):
-        config_data, config_dir = self.cloud_config.config_data('cluster')
+        config_data = self.cloud_config.config_data('cluster')
+        raw_search_path = config_data['search_path']
+        raw_search_path.insert(0, '.')
+        search_path = [join(self.base_dir, path) for path in raw_search_path]
 
         for key, value in kwargs.iteritems():
             config_data['_' + key] = value
 
-        template_dir = join(config_dir, 'templates')
-        self._add_docker_compose(template_dir, config_data)
-        return self._render_template(template_dir, config_data['template'], config_data)
+        self._add_docker_compose(config_data, search_path)
+        return self._render_template(config_data, search_path)
 
-    def _add_docker_compose(self, template_dir, config_data):
-        docker_compose = DockerCompose()
+    def _add_docker_compose(self, config_data, search_path):
+        docker_compose = DockerCompose(search_path)
         docker_compose, docker_compose_override = docker_compose.yaml_files(config_data)
         config_data['docker_compose'] = {}
         config_data['docker_compose']['yaml'] = docker_compose
         config_data['docker_compose']['override_yaml'] = docker_compose_override
 
-    def _render_template(self, template_dir, template_file, template_data):
-        template = Template()
-        return template.render(join(template_dir, template_file), template_data)
+    def _render_template(self, template_data, search_path):
+        template = Template(search_path)
+        return template.render(self.template_file, template_data)

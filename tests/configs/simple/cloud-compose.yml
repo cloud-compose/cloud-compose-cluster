@@ -1,0 +1,16 @@
+cluster:
+  name: simple
+  search_path:
+    - templates
+  aws:
+    volumes:
+      - name: data
+        size: 10G
+        block: /dev/xvdc
+        file_system: ext4
+        meta:
+          format: true
+          mount: /data/mongodb
+    nodes:
+      - id: 0
+        ip: 10.0.10.10

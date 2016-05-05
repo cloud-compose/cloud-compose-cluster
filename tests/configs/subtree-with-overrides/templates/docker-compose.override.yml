@@ -1,0 +1,8 @@
+mongodb:
+  image: washpost/mongodb:3.3
+  extra_hosts:
+  {%- for node in aws.nodes %}
+    - "node{{node.id}}:{{node.ip}}" 
+  {%- endfor %}
+  volumes:
+    - "/data/mongodb/mongodb:/data/db"
