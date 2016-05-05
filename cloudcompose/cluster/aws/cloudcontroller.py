@@ -1,10 +1,14 @@
 from os import environ
+from os.path import abspath, dirname, join, isfile
 import logging
 from cloudcompose.exceptions import CloudComposeException
 import boto3
 import botocore
 from time import sleep
+import time, datetime
 from retrying import retry
+
+ROOT_DIR = abspath(join(dirname(__file__), ".."))
 
 class CloudController:
     def __init__(self, cloud_config):
@@ -15,9 +19,15 @@ class CloudController:
         self.aws = config_data["aws"]
         self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
+        self.asg = self._get_asg_client()
 
     def _get_ec2_client(self):
         return boto3.client('ec2', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+                            region_name=environ.get('AWS_REGION', 'us-east-1'))
+
+    def _get_asg_client(self):
+        return boto3.client('autoscaling', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
                             aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
@@ -28,14 +38,27 @@ class CloudController:
 
     def up(self, cloud_init=None):
         block_device_map = self._build_block_device_map()
-        self._create_instances(block_device_map, cloud_init)
+        if self.aws['asg']:
+            self._create_asg(block_device_map, cloud_init)
+        else:
+            self._create_instances(block_device_map, cloud_init)
 
     def down(self):
-        ips = [node['ip'] for node in self.aws.get('nodes', [])]
-        instance_ids = self._instance_ids_from_private_ip(ips)
-        if len(instance_ids) > 0:
-            self._ec2_terminate_instances(InstanceIds=instance_ids)
-            print 'terminated %s' % ','.join(instance_ids)
+        if self.aws['asg']:
+            asg_name = self.cluster_name
+            self.asg.update_auto_scaling_group(
+                                    AutoScalingGroupName=asg_name,
+                                    MinSize=0,
+                                    MaxSize=0,
+                                    DesiredCapacity=0
+            )
+            print 'asg group %s size has been set to 0' % asg_name
+        else:
+            ips = [node['ip'] for node in self.aws.get('nodes', [])]
+            instance_ids = self._instance_ids_from_private_ip(ips)
+            if len(instance_ids) > 0:
+                self._ec2_terminate_instances(InstanceIds=instance_ids)
+                print 'terminated %s' % ','.join(instance_ids)
 
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []
@@ -72,6 +95,34 @@ class CloudController:
             'Monitoring': { 'Enabled': detailed_monitoring },
             'EbsOptimized': ebs_optimized
         }
+
+    def _create_asg_args(self, block_device_map):
+        asg_name      = self.cluster_name
+        vpc_zones     = self.aws['asg']['subnets']
+        lc_name       = self._build_launch_config(self.asg, block_device_map)
+        term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
+        instance_tags = self._build_instance_tags(None, {})
+        return {
+            'AutoScalingGroupName': asg_name,
+            'LaunchConfigurationName': lc_name,
+            'MinSize': self.aws["size"],
+            'MaxSize': self.aws["size"],
+            'DesiredCapacity': self.aws["size"],
+            'LoadBalancerNames': [],
+            'VPCZoneIdentifier': vpc_zones,
+            'TerminationPolicies': term_policies,
+            'Tags': instance_tags
+        }
+
+    def _create_asg(self, block_device_map, cloud_init):
+        kwargs = self._create_asg_args(block_device_map)
+        print 'creating asg'
+        print kwargs
+        try:
+            self.asg.create_auto_scaling_group(**kwargs)
+            print 'created AutoScalingGroup with name %s' % self.cluster_name
+        except botocore.exceptions.ClientError as ex:
+            raise ex
 
     def _create_instances(self, block_device_map, cloud_init):
         instance_ids = {}
@@ -113,16 +164,26 @@ class CloudController:
             {
                 'Key': 'ClusterName',
                 'Value': self.cluster_name
-            },
-            {
-                'Key': 'Name',
-                'Value' : ('%s-%s' % (self.cluster_name, node_id)),
-            },
+            }
+        ]
+
+        if not self.aws['asg']:
+            instance_tags.append(
             {
                 'Key': 'NodeId',
                 'Value' : str(node_id),
-            }
-        ]
+            })
+            instance_tags.append(
+            {
+                'Key': 'Name',
+                'Value' : ('%s-%s' % (self.cluster_name, node_id)),
+            })
+        else:
+            instance_tags.append(
+            {
+                'Key': 'Name',
+                'Value' : self.cluster_name,
+            })
 
         for key, value in tags.items():
             instance_tags.append({
@@ -132,6 +193,35 @@ class CloudController:
 
         return instance_tags
 
+    def _lc_args(self, block_device_map):
+        cluster_name = self.cluster_name
+        timestamp    = time.time()
+        string_time  = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d-%H-%M-%S")
+        lc_name      = "%s-%s" % (cluster_name, string_time)
+        cloud_init   = self._build_cloud_init()
+
+        return {
+            "LaunchConfigurationName": lc_name,
+            "ImageId": self.aws['ami'],
+            "SecurityGroups": self.aws['security_groups'],
+            "InstanceType": self.aws['instance_type'],
+            "UserData": cloud_init,
+            "KeyName": self.aws['keypair'],
+            "EbsOptimized": self.aws.get("ebs_optimized", False),
+            "BlockDeviceMappings": block_device_map,
+            "InstanceMonitoring": {
+                "Enabled": self.aws.get("monitoring", False)
+            }
+        }
+
+    def _build_launch_config(self, client, block_device_map):
+        params = self._lc_args(block_device_map)
+        client.create_launch_configuration(**params)
+
+        return params['LaunchConfigurationName']
+
+    def _build_cloud_init(self):
+        return 'echo lol'
 
     def _build_block_device_map(self):
         block_device_map = []
