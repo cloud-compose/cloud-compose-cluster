@@ -116,10 +116,8 @@ class CloudController:
 
     def _create_asg(self, block_device_map, cloud_init):
         kwargs = self._create_asg_args(block_device_map)
-        print 'creating asg'
-        print kwargs
         try:
-            self.asg.create_auto_scaling_group(**kwargs)
+            code = self._asg_create(**kwargs)
             print 'created AutoScalingGroup with name %s' % self.cluster_name
         except botocore.exceptions.ClientError as ex:
             raise ex
@@ -293,6 +291,10 @@ class CloudController:
             raise ex
 
         return response
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_create(self, **kwargs):
+        return self.asg.create_auto_scaling_group(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_create_tags(self, **kwargs):
