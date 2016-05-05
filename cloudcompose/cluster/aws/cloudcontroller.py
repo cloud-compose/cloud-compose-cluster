@@ -99,15 +99,16 @@ class CloudController:
     def _create_asg_args(self, block_device_map):
         asg_name      = self.cluster_name
         vpc_zones     = self.aws['asg']['subnets']
+        cluster_size  = len(vpc_zones)
         lc_name       = self._build_launch_config(self.asg, block_device_map)
         term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
         instance_tags = self._build_instance_tags(None, {})
         return {
             'AutoScalingGroupName': asg_name,
             'LaunchConfigurationName': lc_name,
-            'MinSize': self.aws["size"],
-            'MaxSize': self.aws["size"],
-            'DesiredCapacity': self.aws["size"],
+            'MinSize': cluster_size,
+            'MaxSize': cluster_size,
+            'DesiredCapacity': cluster_size,
             'LoadBalancerNames': [],
             'VPCZoneIdentifier': vpc_zones,
             'TerminationPolicies': term_policies,
@@ -191,7 +192,7 @@ class CloudController:
 
         return instance_tags
 
-    def _lc_args(self, block_device_map):
+    def _launch_config_args(self, block_device_map):
         cluster_name = self.cluster_name
         timestamp    = time.time()
         string_time  = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d-%H-%M-%S")
@@ -212,11 +213,11 @@ class CloudController:
             }
         }
 
-    def _build_launch_config(self, client, block_device_map):
-        params = self._lc_args(block_device_map)
-        client.create_launch_configuration(**params)
+    def _build_launch_config(self, block_device_map):
+        kwargs = self._lc_args(block_device_map)
+        self._create_launch_configs(**kwargs)
 
-        return params['LaunchConfigurationName']
+        return kwargs['LaunchConfigurationName']
 
     def _build_cloud_init(self):
         return 'echo lol'
@@ -300,6 +301,9 @@ class CloudController:
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
 
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _create_launch_configs(self, **kwargs):
+        return self.asg.create_launch_configuration(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _find_block_from_ami(self, ami):
