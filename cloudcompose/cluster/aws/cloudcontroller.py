@@ -1,6 +1,7 @@
 from os import environ
 import logging
 from cloudcompose.exceptions import CloudComposeException
+from instancepolicy import InstancePolicy
 import boto3
 import botocore
 from time import sleep
@@ -12,7 +13,8 @@ class CloudController:
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
         config_data = cloud_config.config_data('cluster')
-        self.aws = config_data["aws"]
+        self.aws = config_data['aws']
+        self.instance_policy = self.aws.get('instance_policy')
         self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
 
@@ -26,7 +28,7 @@ class CloudController:
             raise CloudComposeException('Missing %s environment variable' % key)
         return environ[key]
 
-    def up(self, cloud_init=None):
+    def up(self, cloud_init=None ):
         block_device_map = self._build_block_device_map()
         self._create_instances(block_device_map, cloud_init)
 
@@ -76,6 +78,10 @@ class CloudController:
     def _create_instances(self, block_device_map, cloud_init):
         instance_ids = {}
         kwargs = self._create_instance_args(block_device_map)
+        if self.instance_policy:
+            self._create_instance_policy(self.instance_policy)
+            kwargs['IamInstanceProfile'] = {'Name': self.cluster_name}
+
         for node in self.aws.get("nodes", []):
             private_ip = node["ip"]
             kwargs['SubnetId'] = node["subnet"]
@@ -104,6 +110,9 @@ class CloudController:
         for node_id, instance_id in instance_ids.iteritems():
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
 
+    def _create_instance_policy(self, instance_policy):
+        policy_manager = InstancePolicy(self.cluster_name)
+        policy_manager.create_instance_policy(instance_policy)
 
     def _tag_instance(self, tags, node_id, instance_id):
         instance_tags = self._build_instance_tags(node_id, tags)
