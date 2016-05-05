@@ -1,7 +1,9 @@
 from os import environ
 import logging
 from cloudcompose.exceptions import CloudComposeException
-from instancepolicy import InstancePolicy
+from iam import InstancePolicyController
+from cloudwatch import LogsController
+from util import require_env_var
 import boto3
 import botocore
 from time import sleep
@@ -14,22 +16,22 @@ class CloudController:
         self.cloud_config = cloud_config
         config_data = cloud_config.config_data('cluster')
         self.aws = config_data['aws']
+        self.log_driver = config_data.get('logging', {}).get('driver')
+        self.log_group = config_data.get('logging', {}).get('meta', {}).get('group')
+        self.log_retention = config_data.get('logging', {}).get('meta', {}).get('retention')
         self.instance_policy = self.aws.get('instance_policy')
         self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
 
     def _get_ec2_client(self):
-        return boto3.client('ec2', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+        return boto3.client('ec2', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
-
-    def _require_env_var(self, key):
-        if key not in environ:
-            raise CloudComposeException('Missing %s environment variable' % key)
-        return environ[key]
 
     def up(self, cloud_init=None ):
         block_device_map = self._build_block_device_map()
+        if self.log_driver == 'awslogs':
+            self._create_log_group(self.log_group, self.log_retention)
         self._create_instances(block_device_map, cloud_init)
 
     def down(self):
@@ -111,8 +113,12 @@ class CloudController:
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
 
     def _create_instance_policy(self, instance_policy):
-        policy_manager = InstancePolicy(self.cluster_name)
-        policy_manager.create_instance_policy(instance_policy)
+        controller = InstancePolicyController(self.cluster_name)
+        controller.create_instance_policy(instance_policy)
+
+    def _create_log_group(self, log_group, log_retention):
+        controller = LogsController()
+        controller.create_log_group(log_group, log_retention)
 
     def _tag_instance(self, tags, node_id, instance_id):
         instance_tags = self._build_instance_tags(node_id, tags)

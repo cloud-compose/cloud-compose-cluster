@@ -1,23 +1,19 @@
 import boto3
 import botocore
 from cloudcompose.exceptions import CloudComposeException
+from util import require_env_var
 from retrying import retry
 from os import environ
 
-class InstancePolicy:
+class InstancePolicyController:
     def __init__(self, cluster_name):
         self.cluster_name = cluster_name
         self.iam = self._get_iam_client()
 
     def _get_iam_client(self):
-        return boto3.client('iam', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+        return boto3.client('iam', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
-
-    def _require_env_var(self, key):
-        if key not in environ:
-            raise CloudComposeException('Missing %s environment variable' % key)
-        return environ[key]
 
     def create_instance_policy(self, policy):
         self._iam_create_role(RoleName=self.cluster_name, Path="/", AssumeRolePolicyDocument=self._assume_role)
