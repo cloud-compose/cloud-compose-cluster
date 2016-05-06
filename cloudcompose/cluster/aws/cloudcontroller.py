@@ -2,6 +2,7 @@ from os import environ
 import logging
 from cloudcompose.exceptions import CloudComposeException
 from iam import InstancePolicyController
+from ebs import EBSController
 from cloudwatch import LogsController
 from util import require_env_var
 import boto3
@@ -28,8 +29,8 @@ class CloudController:
                             aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
-    def up(self, cloud_init=None ):
-        block_device_map = self._build_block_device_map()
+    def up(self, cloud_init=None, no_snapshots=False):
+        block_device_map = self._block_device_map(no_snapshots)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
         self._create_instances(block_device_map, cloud_init)
@@ -40,6 +41,11 @@ class CloudController:
         if len(instance_ids) > 0:
             self._ec2_terminate_instances(InstanceIds=instance_ids)
             print 'terminated %s' % ','.join(instance_ids)
+
+    def _block_device_map(self, no_snapshots):
+        controller = EBSController(self.ec2, self.cluster_name)
+        default_device = self._find_device_from_ami(self.aws['ami'])
+        return controller.block_device_map(self.aws['volumes'], default_device, no_snapshots)
 
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []
@@ -150,45 +156,6 @@ class CloudController:
         return instance_tags
 
 
-    def _build_block_device_map(self):
-        block_device_map = []
-        for volume in self.aws.get("volumes", []):
-            block_device_map.append(self._create_volume_config(self.aws['ami'], volume))
-
-        return block_device_map
-
-    def _create_volume_config(self, ami, volume):
-        volume_config = {
-            "DeviceName": self._find_volume_block(ami, volume),
-            "Ebs": {
-                "VolumeSize": self._format_size(volume.get("size", "10G")),
-                "DeleteOnTermination": volume.get("delete_on_termination", True),
-                "VolumeType": volume.get("volume_type", "gp2")
-            }
-        }
-        snapshot = volume.get("snapshot", None)
-        if snapshot:
-            volume_config["SnapshotId"] = snapshot
-
-        return volume_config
-
-    def _find_volume_block(self, ami, volume):
-        if 'block' in volume:
-            return volume['block']
-        return self._find_block_from_ami(ami)
-
-    def _format_size(self, size):
-        size_in_gb = 0
-        units = size[-1]
-        quantity = int(size[0:len(size)-1])
-
-        if units.lower() == 't':
-            return quantity * 1000
-        elif units.lower() == 'g':
-            return quantity
-        elif units.lower() == 'm':
-            return quantity / 1000
-
     def _is_retryable_exception(exception):
         return isinstance(exception, botocore.exceptions.ClientError) and \
            exception.response["Error"]["Code"] == 'InvalidIPAddress.InUse'
@@ -227,16 +194,16 @@ class CloudController:
 
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
-    def _find_block_from_ami(self, ami):
-        block = "/dev/xvda1"
+    def _find_device_from_ami(self, ami):
+        device = "/dev/xvda1"
         response = self.ec2.describe_images(ImageIds=[ami])
         if 'Images' in response:
             images = response['Images']
             if len(images) > 0:
                 image = images[0]
                 if 'RootDeviceName' in image:
-                    block = image['RootDeviceName']
-        return block
+                    device = image['RootDeviceName']
+        return device
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_terminate_instances(self, **kwargs):
