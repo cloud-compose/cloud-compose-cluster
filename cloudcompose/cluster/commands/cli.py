@@ -17,7 +17,7 @@ def up(cloud_init):
     ci = None
 
     if cloud_init:
-        ci = CloudInit(cloud_config)
+        ci = CloudInit()
 
     cloud_controller = CloudController(cloud_config)
     cloud_controller.up(ci)
@@ -37,5 +37,6 @@ def build():
     builds the cloud_init script
     """
     cloud_config = CloudConfig()
-    cloud_init = CloudInit(cloud_config)
-    print cloud_init.build()
+    config_data = cloud_config.config_data('cluster')
+    cloud_init = CloudInit()
+    print cloud_init.build(config_data)

@@ -16,13 +16,13 @@ class CloudController:
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
-        config_data = cloud_config.config_data('cluster')
-        self.aws = config_data['aws']
-        self.log_driver = config_data.get('logging', {}).get('driver')
-        self.log_group = config_data.get('logging', {}).get('meta', {}).get('group')
-        self.log_retention = config_data.get('logging', {}).get('meta', {}).get('retention')
+        self.config_data = cloud_config.config_data('cluster')
+        self.aws = self.config_data['aws']
+        self.log_driver = self.config_data.get('logging', {}).get('driver')
+        self.log_group = self.config_data.get('logging', {}).get('meta', {}).get('group')
+        self.log_retention = self.config_data.get('logging', {}).get('meta', {}).get('retention')
         self.instance_policy = self.aws.get('instance_policy')
-        self.cluster_name = config_data['name']
+        self.cluster_name = self.config_data['name']
         self.ec2 = self._get_ec2_client()
 
     def _get_ec2_client(self):
@@ -97,7 +97,7 @@ class CloudController:
             kwargs['PrivateIpAddress'] = private_ip
 
             if cloud_init:
-                cloud_init_script = cloud_init.build(node_id=node['id'])
+                cloud_init_script = cloud_init.build(self.config_data, node_id=node['id'])
                 kwargs['UserData'] = cloud_init_script
 
             max_retries = 6
