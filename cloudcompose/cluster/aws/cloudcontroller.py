@@ -30,8 +30,8 @@ class CloudController:
                             aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
-    def up(self, cloud_init=None, no_snapshots=False):
-        block_device_map = self._block_device_map(no_snapshots)
+    def up(self, cloud_init=None, use_snapshots=True):
+        block_device_map = self._block_device_map(use_snapshots)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
         self._create_instances(block_device_map, cloud_init)
@@ -43,10 +43,10 @@ class CloudController:
             self._ec2_terminate_instances(InstanceIds=instance_ids)
             print 'terminated %s' % ','.join(instance_ids)
 
-    def _block_device_map(self, no_snapshots):
+    def _block_device_map(self, use_snapshots):
         controller = EBSController(self.ec2, self.cluster_name)
         default_device = self._find_device_from_ami(self.aws['ami'])
-        return controller.block_device_map(self.aws['volumes'], default_device, no_snapshots)
+        return controller.block_device_map(self.aws['volumes'], default_device, use_snapshots)
 
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []
@@ -111,10 +111,7 @@ class CloudController:
                         instance_ids[node['id']] = instance_id
                     break
                 except botocore.exceptions.ClientError as ex:
-                    if ex.response["Error"]["Code"] == 'InvalidIPAddress.InUse':
-                        print(ex.response["Error"]["Message"])
-                    else:
-                        print(ex.response["Error"]["Message"])
+                    print(ex.response["Error"]["Message"])
 
         for node_id, instance_id in instance_ids.iteritems():
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
@@ -159,7 +156,8 @@ class CloudController:
 
     def _is_retryable_exception(exception):
         return isinstance(exception, botocore.exceptions.ClientError) and \
-           exception.response["Error"]["Code"] == 'InvalidIPAddress.InUse'
+           (exception.response["Error"]["Code"] in ['InvalidIPAddress.InUse', 'InvalidInstanceID.NotFound'] or
+            'Invalid IAM Instance Profile name' in exception.response["Error"]["Message"])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _find_existing_instance_id(self, private_ip):

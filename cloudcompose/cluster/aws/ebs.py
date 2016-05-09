@@ -6,10 +6,10 @@ class EBSController:
         self.ec2 = ec2
         self.cluster_name = cluster_name
 
-    def block_device_map(self, volumes, default_device, no_snapshots):
+    def block_device_map(self, volumes, default_device, use_snapshots):
         block_device_map = []
         for volume in volumes:
-            block_device_map.append(self._create_volume_config(volume, default_device, no_snapshots))
+            block_device_map.append(self._create_volume_config(volume, default_device, use_snapshots))
 
         return block_device_map
 
@@ -41,7 +41,7 @@ class EBSController:
         response = self.ec2.describe_snapshots(**kwargs)
         return response.get('Snapshots', [])
 
-    def _create_volume_config(self, volume, default_device, no_snapshots):
+    def _create_volume_config(self, volume, default_device, use_snapshots):
         device = volume.get('block', default_device)
         volume_config = {
             "DeviceName": device,
@@ -51,7 +51,7 @@ class EBSController:
                 "VolumeType": volume.get("volume_type", "gp2")
             }
         }
-        if not no_snapshots:
+        if use_snapshots:
             self._add_snapshot_id(volume_config, volume, device)
 
         return volume_config
