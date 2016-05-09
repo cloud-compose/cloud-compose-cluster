@@ -9,6 +9,7 @@ import boto3
 import botocore
 from time import sleep
 from retrying import retry
+from pprint import pprint
 
 class CloudController:
     def __init__(self, cloud_config):

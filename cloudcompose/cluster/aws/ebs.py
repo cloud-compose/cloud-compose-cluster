@@ -57,11 +57,13 @@ class EBSController:
         return volume_config
 
     def _add_snapshot_id(self, volume_config, volume, device):
-        snapshot_id = volume.get("snapshot", None)
+        snapshot_id = volume.get('snapshot', None)
         if not snapshot_id:
             snapshot_id = self.find_latest_snapshot(device)
         if snapshot_id:
             volume_config["Ebs"]["SnapshotId"] = snapshot_id
+            if 'snapshot' not in volume:
+                volume['snapshot'] = snapshot_id
             print "starting cluster from snapshot %s" % snapshot_id
 
     def _format_size(self, size):
