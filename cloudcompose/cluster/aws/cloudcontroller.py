@@ -120,7 +120,7 @@ class CloudController:
         asg_name      = self.cluster_name
         vpc_zones     = self.aws['asg']['subnets']
         cluster_size  = len(vpc_zones.split(','))
-        redundancy    = self.aws['asg']['redundancy']
+        redundancy    = self.aws['asg'].get('redundancy', 1)
         lc_name       = self._build_launch_config(block_device_map, cloud_init)
         term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
         instance_tags = self._build_instance_tags(None, {})
