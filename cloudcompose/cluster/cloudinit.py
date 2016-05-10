@@ -12,7 +12,6 @@ class CloudInit():
         raw_search_path = config_data['search_path']
         raw_search_path.insert(0, '.')
         search_path = [join(self.base_dir, path) for path in raw_search_path]
-
         for key, value in kwargs.iteritems():
             config_data['_' + key] = value
 

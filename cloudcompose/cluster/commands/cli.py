@@ -33,6 +33,15 @@ def down():
     cloud_controller.down()
 
 @cli.command()
+def cleanup():
+    """
+    deletes launch configs and auto scaling group
+    """
+    cloud_config = CloudConfig()
+    cloud_controller = CloudController(cloud_config)
+    cloud_controller.cleanup()
+
+@cli.command()
 def build():
     """
     builds the cloud_init script
