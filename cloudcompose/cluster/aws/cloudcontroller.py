@@ -34,21 +34,21 @@ class CloudController:
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def _get_asg_client(self):
-        return boto3.client('autoscaling', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+        return boto3.client('autoscaling', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def up(self, cloud_init=None, use_snapshots=True):
         block_device_map = self._block_device_map(use_snapshots)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
-        if self.aws['asg']:
+        if self.aws.get('asg'):
             self._create_asg(block_device_map, cloud_init)
         else:
             self._create_instances(block_device_map, cloud_init)
 
     def down(self):
-        if self.aws['asg']:
+        if self.aws.get('asg'):
             asg_name = self.cluster_name
             self.asg.update_auto_scaling_group(
                                     AutoScalingGroupName=asg_name,
@@ -65,7 +65,7 @@ class CloudController:
                 print 'terminated %s' % ','.join(instance_ids)
 
     def cleanup(self):
-        if self.aws['asg']:
+        if self.aws.get('asg'):
             print 'cleaning up!'
             asg_name = self.cluster_name
             asg_details = self._describe_asg(asg_name)
@@ -210,7 +210,7 @@ class CloudController:
             }
         ]
 
-        if not self.aws['asg']:
+        if not self.aws.get('asg'):
             instance_tags.append(
             {
                 'Key': 'NodeId',
