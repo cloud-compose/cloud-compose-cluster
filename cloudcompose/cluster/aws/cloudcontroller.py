@@ -2,47 +2,53 @@ from os import environ
 from os.path import abspath, dirname, join, isfile
 import logging
 from cloudcompose.exceptions import CloudComposeException
+from iam import InstancePolicyController
+from ebs import EBSController
+from cloudwatch import LogsController
+from util import require_env_var
 import boto3
 import botocore
 from time import sleep
 import time, datetime
 from retrying import retry
+from pprint import pprint
 
 class CloudController:
     def __init__(self, cloud_config):
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
-        config_data = cloud_config.config_data('cluster')[0]
-        self.aws = config_data['aws']
-        self.cluster_name = config_data['name']
+        self.config_data = cloud_config.config_data('cluster')
+        self.aws = self.config_data['aws']
+        self.log_driver = self.config_data.get('logging', {}).get('driver')
+        self.log_group = self.config_data.get('logging', {}).get('meta', {}).get('group')
+        self.log_retention = self.config_data.get('logging', {}).get('meta', {}).get('retention')
+        self.instance_policy = self.aws.get('instance_policy')
+        self.cluster_name = self.config_data['name']
         self.ec2 = self._get_ec2_client()
         self.asg = self._get_asg_client()
 
     def _get_ec2_client(self):
-        return boto3.client('ec2', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+        return boto3.client('ec2', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def _get_asg_client(self):
-        return boto3.client('autoscaling', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+        return boto3.client('autoscaling', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
-    def _require_env_var(self, key):
-        if key not in environ:
-            raise CloudComposeException('Missing %s environment variable' % key)
-        return environ[key]
-
-    def up(self, cloud_init=None):
-        block_device_map = self._build_block_device_map()
-        if self.aws['asg']:
+    def up(self, cloud_init=None, use_snapshots=True):
+        block_device_map = self._block_device_map(use_snapshots)
+        if self.log_driver == 'awslogs':
+            self._create_log_group(self.log_group, self.log_retention)
+        if self.aws.get('asg'):
             self._create_asg(block_device_map, cloud_init)
         else:
             self._create_instances(block_device_map, cloud_init)
 
     def down(self):
-        if self.aws['asg']:
+        if self.aws.get('asg'):
             asg_name = self.cluster_name
             self.asg.update_auto_scaling_group(
                                     AutoScalingGroupName=asg_name,
@@ -59,7 +65,7 @@ class CloudController:
                 print 'terminated %s' % ','.join(instance_ids)
 
     def cleanup(self):
-        if self.aws['asg']:
+        if self.aws.get('asg'):
             print 'cleaning up!'
             asg_name = self.cluster_name
             asg_details = self._describe_asg(asg_name)
@@ -79,6 +85,11 @@ class CloudController:
         else:
             print 'cleanup has no effect for non-ASG clusters'
             print 'use cloud-compose cluster down to remove instances'
+
+    def _block_device_map(self, use_snapshots):
+        controller = EBSController(self.ec2, self.cluster_name)
+        default_device = self._find_device_from_ami(self.aws['ami'])
+        return controller.block_device_map(self.aws['volumes'], default_device, use_snapshots)
 
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []
@@ -149,13 +160,17 @@ class CloudController:
     def _create_instances(self, block_device_map, cloud_init):
         instance_ids = {}
         kwargs = self._create_instance_args(block_device_map)
+        if self.instance_policy:
+            self._create_instance_policy(self.instance_policy)
+            kwargs['IamInstanceProfile'] = {'Name': self.cluster_name}
+
         for node in self.aws.get("nodes", []):
             private_ip = node["ip"]
             kwargs['SubnetId'] = node["subnet"]
             kwargs['PrivateIpAddress'] = private_ip
 
             if cloud_init:
-                cloud_init_script = cloud_init.build(node_id=node['id'])
+                cloud_init_script = cloud_init.build(self.config_data, node_id=node['id'])
                 kwargs['UserData'] = cloud_init_script
 
             max_retries = 6
@@ -169,12 +184,18 @@ class CloudController:
                         instance_ids[node['id']] = instance_id
                     break
                 except botocore.exceptions.ClientError as ex:
-                    if ex.response["Error"]["Code"] == 'InvalidIPAddress.InUse':
-                        print(ex.response["Error"]["Message"])
+                    print(ex.response["Error"]["Message"])
 
         for node_id, instance_id in instance_ids.iteritems():
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
 
+    def _create_instance_policy(self, instance_policy):
+        controller = InstancePolicyController(self.cluster_name)
+        controller.create_instance_policy(instance_policy)
+
+    def _create_log_group(self, log_group, log_retention):
+        controller = LogsController()
+        controller.create_log_group(log_group, log_retention)
 
     def _tag_instance(self, tags, node_id, instance_id):
         instance_tags = self._build_instance_tags(node_id, tags)
@@ -189,7 +210,7 @@ class CloudController:
             }
         ]
 
-        if not self.aws['asg']:
+        if not self.aws.get('asg'):
             instance_tags.append(
             {
                 'Key': 'NodeId',
@@ -244,48 +265,10 @@ class CloudController:
 
         return kwargs['LaunchConfigurationName']
 
-    def _build_block_device_map(self):
-        block_device_map = []
-        for volume in self.aws.get("volumes", []):
-            block_device_map.append(self._create_volume_config(self.aws['ami'], volume))
-
-        return block_device_map
-
-    def _create_volume_config(self, ami, volume):
-        volume_config = {
-            "DeviceName": self._find_volume_block(ami, volume),
-            "Ebs": {
-                "VolumeSize": self._format_size(volume.get("size", "10G")),
-                "DeleteOnTermination": volume.get("delete_on_termination", True),
-                "VolumeType": volume.get("volume_type", "gp2")
-            }
-        }
-        snapshot = volume.get("snapshot", None)
-        if snapshot:
-            volume_config["SnapshotId"] = snapshot
-
-        return volume_config
-
-    def _find_volume_block(self, ami, volume):
-        if 'block' in volume:
-            return volume['block']
-        return self._find_block_from_ami(ami)
-
-    def _format_size(self, size):
-        size_in_gb = 0
-        units = size[-1]
-        quantity = int(size[0:len(size)-1])
-
-        if units.lower() == 't':
-            return quantity * 1000
-        elif units.lower() == 'g':
-            return quantity
-        elif units.lower() == 'm':
-            return quantity / 1000
-
     def _is_retryable_exception(exception):
         return isinstance(exception, botocore.exceptions.ClientError) and \
-           exception.response["Error"]["Code"] == 'InvalidIPAddress.InUse'
+           (exception.response["Error"]["Code"] in ['InvalidIPAddress.InUse', 'InvalidInstanceID.NotFound'] or
+            'Invalid IAM Instance Profile name' in exception.response["Error"]["Message"])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _find_existing_instance_id(self, private_ip):
@@ -328,16 +311,16 @@ class CloudController:
         return self.asg.create_launch_configuration(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
-    def _find_block_from_ami(self, ami):
-        block = "/dev/xvda1"
+    def _find_device_from_ami(self, ami):
+        device = "/dev/xvda1"
         response = self.ec2.describe_images(ImageIds=[ami])
         if 'Images' in response:
             images = response['Images']
             if len(images) > 0:
                 image = images[0]
                 if 'RootDeviceName' in image:
-                    block = image['RootDeviceName']
-        return block
+                    device = image['RootDeviceName']
+        return device
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_terminate_instances(self, **kwargs):

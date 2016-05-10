@@ -4,13 +4,11 @@ from os.path import join, split
 from pprint import pprint
 
 class CloudInit():
-    def __init__(self, cloud_config, base_dir='.'):
+    def __init__(self, base_dir='.'):
         self.base_dir = base_dir
-        self.cloud_config = cloud_config
         self.template_file = 'cluster.sh'
 
-    def build(self, **kwargs):
-        config_data = self.cloud_config.config_data('cluster')[0]
+    def build(self, config_data, **kwargs):
         raw_search_path = config_data['search_path']
         raw_search_path.insert(0, '.')
         search_path = [join(self.base_dir, path) for path in raw_search_path]
