@@ -8,15 +8,13 @@ from time import sleep
 import time, datetime
 from retrying import retry
 
-ROOT_DIR = abspath(join(dirname(__file__), ".."))
-
 class CloudController:
     def __init__(self, cloud_config):
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
-        config_data = cloud_config.config_data('cluster')
-        self.aws = config_data["aws"]
+        config_data = cloud_config.config_data('cluster')[0]
+        self.aws = config_data['aws']
         self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
         self.asg = self._get_asg_client()
@@ -96,19 +94,20 @@ class CloudController:
             'EbsOptimized': ebs_optimized
         }
 
-    def _create_asg_args(self, block_device_map):
+    def _create_asg_args(self, block_device_map, cloud_init):
         asg_name      = self.cluster_name
         vpc_zones     = self.aws['asg']['subnets']
-        cluster_size  = len(vpc_zones)
-        lc_name       = self._build_launch_config(self.asg, block_device_map)
+        cluster_size  = len(vpc_zones.split(','))
+        redundancy    = self.aws['asg']['redundancy']
+        lc_name       = self._build_launch_config(block_device_map, cloud_init)
         term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
         instance_tags = self._build_instance_tags(None, {})
         return {
             'AutoScalingGroupName': asg_name,
             'LaunchConfigurationName': lc_name,
-            'MinSize': cluster_size,
-            'MaxSize': cluster_size,
-            'DesiredCapacity': cluster_size,
+            'MinSize': cluster_size * redundancy,
+            'MaxSize': cluster_size * redundancy,
+            'DesiredCapacity': cluster_size * redundancy,
             'LoadBalancerNames': [],
             'VPCZoneIdentifier': vpc_zones,
             'TerminationPolicies': term_policies,
@@ -116,10 +115,10 @@ class CloudController:
         }
 
     def _create_asg(self, block_device_map, cloud_init):
-        kwargs = self._create_asg_args(block_device_map)
+        kwargs = self._create_asg_args(block_device_map, cloud_init)
         try:
             code = self._asg_create(**kwargs)
-            print 'created AutoScalingGroup with name %s' % self.cluster_name
+            print 'created AutoScalingGroup with name %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
         except botocore.exceptions.ClientError as ex:
             raise ex
 
@@ -192,19 +191,21 @@ class CloudController:
 
         return instance_tags
 
-    def _launch_config_args(self, block_device_map):
+    def _launch_config_args(self, block_device_map, cloud_init):
         cluster_name = self.cluster_name
         timestamp    = time.time()
         string_time  = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d-%H-%M-%S")
         lc_name      = "%s-%s" % (cluster_name, string_time)
-        cloud_init   = self._build_cloud_init()
+
+        if cloud_init:
+            cloud_init_script = cloud_init.build(node_id=cluster_name)
 
         return {
             "LaunchConfigurationName": lc_name,
             "ImageId": self.aws['ami'],
             "SecurityGroups": self.aws['security_groups'],
             "InstanceType": self.aws['instance_type'],
-            "UserData": cloud_init,
+            "UserData": cloud_init_script,
             "KeyName": self.aws['keypair'],
             "EbsOptimized": self.aws.get("ebs_optimized", False),
             "BlockDeviceMappings": block_device_map,
@@ -213,14 +214,11 @@ class CloudController:
             }
         }
 
-    def _build_launch_config(self, block_device_map):
-        kwargs = self._lc_args(block_device_map)
+    def _build_launch_config(self, block_device_map, cloud_init):
+        kwargs = self._launch_config_args(block_device_map, cloud_init)
         self._create_launch_configs(**kwargs)
 
         return kwargs['LaunchConfigurationName']
-
-    def _build_cloud_init(self):
-        return 'echo lol'
 
     def _build_block_device_map(self):
         block_device_map = []
