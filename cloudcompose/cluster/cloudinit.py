@@ -10,11 +10,10 @@ class CloudInit():
         self.template_file = 'cluster.sh'
 
     def build(self, **kwargs):
-        config_data = self.cloud_config.config_data('cluster')
+        config_data = self.cloud_config.config_data('cluster')[0]
         raw_search_path = config_data['search_path']
         raw_search_path.insert(0, '.')
         search_path = [join(self.base_dir, path) for path in raw_search_path]
-
         for key, value in kwargs.iteritems():
             config_data['_' + key] = value
 

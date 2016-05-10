@@ -1,9 +1,11 @@
 from os import environ
+from os.path import abspath, dirname, join, isfile
 import logging
 from cloudcompose.exceptions import CloudComposeException
 import boto3
 import botocore
 from time import sleep
+import time, datetime
 from retrying import retry
 
 class CloudController:
@@ -11,13 +13,19 @@ class CloudController:
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
-        config_data = cloud_config.config_data('cluster')
-        self.aws = config_data["aws"]
+        config_data = cloud_config.config_data('cluster')[0]
+        self.aws = config_data['aws']
         self.cluster_name = config_data['name']
         self.ec2 = self._get_ec2_client()
+        self.asg = self._get_asg_client()
 
     def _get_ec2_client(self):
         return boto3.client('ec2', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
+                            aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
+                            region_name=environ.get('AWS_REGION', 'us-east-1'))
+
+    def _get_asg_client(self):
+        return boto3.client('autoscaling', aws_access_key_id=self._require_env_var('AWS_ACCESS_KEY_ID'),
                             aws_secret_access_key=self._require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
@@ -28,14 +36,49 @@ class CloudController:
 
     def up(self, cloud_init=None):
         block_device_map = self._build_block_device_map()
-        self._create_instances(block_device_map, cloud_init)
+        if self.aws['asg']:
+            self._create_asg(block_device_map, cloud_init)
+        else:
+            self._create_instances(block_device_map, cloud_init)
 
     def down(self):
-        ips = [node['ip'] for node in self.aws.get('nodes', [])]
-        instance_ids = self._instance_ids_from_private_ip(ips)
-        if len(instance_ids) > 0:
-            self._ec2_terminate_instances(InstanceIds=instance_ids)
-            print 'terminated %s' % ','.join(instance_ids)
+        if self.aws['asg']:
+            asg_name = self.cluster_name
+            self.asg.update_auto_scaling_group(
+                                    AutoScalingGroupName=asg_name,
+                                    MinSize=0,
+                                    MaxSize=0,
+                                    DesiredCapacity=0
+            )
+            print 'asg group %s size has been set to 0' % asg_name
+        else:
+            ips = [node['ip'] for node in self.aws.get('nodes', [])]
+            instance_ids = self._instance_ids_from_private_ip(ips)
+            if len(instance_ids) > 0:
+                self._ec2_terminate_instances(InstanceIds=instance_ids)
+                print 'terminated %s' % ','.join(instance_ids)
+
+    def cleanup(self):
+        if self.aws['asg']:
+            print 'cleaning up!'
+            asg_name = self.cluster_name
+            asg_details = self._describe_asg(asg_name)
+
+            asg_lc = asg_details["AutoScalingGroups"][0]["LaunchConfigurationName"]
+            asg_instances = len(asg_details["AutoScalingGroups"][0]["Instances"])
+
+            if asg_instances != 0:
+                print 'autoscaling group %s still has %s active instances. delete cancelled' % (asg_name, asg_instances)
+                print 'run cloud-compose cluster down first or wait for instances to terminate'
+            else:
+                self._delete_asg(asg_name)
+                print 'deleted autoscaling group %s' % asg_name
+
+                self._delete_launch_config(asg_lc)
+                print 'deleted launch configuration %s' % asg_lc
+        else:
+            print 'cleanup has no effect for non-ASG clusters'
+            print 'use cloud-compose cluster down to remove instances'
 
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []
@@ -72,6 +115,36 @@ class CloudController:
             'Monitoring': { 'Enabled': detailed_monitoring },
             'EbsOptimized': ebs_optimized
         }
+
+    def _create_asg_args(self, block_device_map, cloud_init):
+        asg_name      = self.cluster_name
+        subnet_list   = self.aws['asg']['subnets']
+        vpc_zones     = ', '.join(subnet_list)
+        cluster_size  = len(subnet_list)
+        redundancy    = self.aws['asg'].get('redundancy', 1)
+        lc_name       = self._build_launch_config(block_device_map, cloud_init)
+        term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
+        instance_tags = self._build_instance_tags(None, {})
+
+        return {
+            'AutoScalingGroupName': asg_name,
+            'LaunchConfigurationName': lc_name,
+            'MinSize': cluster_size * redundancy,
+            'MaxSize': cluster_size * redundancy,
+            'DesiredCapacity': cluster_size * redundancy,
+            'LoadBalancerNames': [],
+            'VPCZoneIdentifier': vpc_zones,
+            'TerminationPolicies': term_policies,
+            'Tags': instance_tags
+        }
+
+    def _create_asg(self, block_device_map, cloud_init):
+        kwargs = self._create_asg_args(block_device_map, cloud_init)
+        try:
+            code = self._asg_create(**kwargs)
+            print 'created AutoScalingGroup with name %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
+        except botocore.exceptions.ClientError as ex:
+            raise ex
 
     def _create_instances(self, block_device_map, cloud_init):
         instance_ids = {}
@@ -113,16 +186,26 @@ class CloudController:
             {
                 'Key': 'ClusterName',
                 'Value': self.cluster_name
-            },
-            {
-                'Key': 'Name',
-                'Value' : ('%s-%s' % (self.cluster_name, node_id)),
-            },
+            }
+        ]
+
+        if not self.aws['asg']:
+            instance_tags.append(
             {
                 'Key': 'NodeId',
                 'Value' : str(node_id),
-            }
-        ]
+            })
+            instance_tags.append(
+            {
+                'Key': 'Name',
+                'Value' : ('%s-%s' % (self.cluster_name, node_id)),
+            })
+        else:
+            instance_tags.append(
+            {
+                'Key': 'Name',
+                'Value' : self.cluster_name,
+            })
 
         for key, value in tags.items():
             instance_tags.append({
@@ -132,6 +215,34 @@ class CloudController:
 
         return instance_tags
 
+    def _launch_config_args(self, block_device_map, cloud_init):
+        cluster_name = self.cluster_name
+        timestamp    = time.time()
+        string_time  = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d-%H-%M-%S")
+        lc_name      = "%s-%s" % (cluster_name, string_time)
+
+        if cloud_init:
+            cloud_init_script = cloud_init.build(node_id=cluster_name)
+
+        return {
+            "LaunchConfigurationName": lc_name,
+            "ImageId": self.aws['ami'],
+            "SecurityGroups": self.aws['security_groups'],
+            "InstanceType": self.aws['instance_type'],
+            "UserData": cloud_init_script,
+            "KeyName": self.aws['keypair'],
+            "EbsOptimized": self.aws.get("ebs_optimized", False),
+            "BlockDeviceMappings": block_device_map,
+            "InstanceMonitoring": {
+                "Enabled": self.aws.get("monitoring", False)
+            }
+        }
+
+    def _build_launch_config(self, block_device_map, cloud_init):
+        kwargs = self._launch_config_args(block_device_map, cloud_init)
+        self._create_launch_configs(**kwargs)
+
+        return kwargs['LaunchConfigurationName']
 
     def _build_block_device_map(self):
         block_device_map = []
@@ -205,9 +316,16 @@ class CloudController:
         return response
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_create(self, **kwargs):
+        return self.asg.create_auto_scaling_group(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
 
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _create_launch_configs(self, **kwargs):
+        return self.asg.create_launch_configuration(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _find_block_from_ami(self, ami):
@@ -229,3 +347,20 @@ class CloudController:
     def _ec2_describe_instances(self, **kwargs):
         return self.ec2.describe_instances(**kwargs)
 
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _describe_asg(self, name):
+        return self.asg.describe_auto_scaling_groups(
+                    AutoScalingGroupNames=[name]
+                )
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _delete_asg(self, name):
+        self.asg.delete_auto_scaling_group(
+                    AutoScalingGroupName=name
+                )
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _delete_launch_config(self, name):
+        self.asg.delete_launch_configuration(
+                    LaunchConfigurationName=name
+                )
