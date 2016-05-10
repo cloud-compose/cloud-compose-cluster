@@ -58,6 +58,28 @@ class CloudController:
                 self._ec2_terminate_instances(InstanceIds=instance_ids)
                 print 'terminated %s' % ','.join(instance_ids)
 
+    def cleanup(self):
+        if self.aws['asg']:
+            print 'cleaning up!'
+            asg_name = self.cluster_name
+            asg_details = self._describe_asg(asg_name)
+
+            asg_lc = asg_details["AutoScalingGroups"][0]["LaunchConfigurationName"]
+            asg_instances = len(asg_details["AutoScalingGroups"][0]["Instances"])
+
+            if asg_instances != 0:
+                print 'autoscaling group %s still has %s active instances. delete cancelled' % (asg_name, asg_instances)
+                print 'run cloud-compose cluster down first or wait for instances to terminate'
+            else:
+                self._delete_asg(asg_name)
+                print 'deleted autoscaling group %s' % asg_name
+
+                self._delete_launch_config(asg_lc)
+                print 'deleted launch configuration %s' % asg_lc
+        else:
+            print 'cleanup has no effect for non-ASG clusters'
+            print 'use cloud-compose cluster down to remove instances'
+
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []
         filters = [
@@ -323,3 +345,20 @@ class CloudController:
     def _ec2_describe_instances(self, **kwargs):
         return self.ec2.describe_instances(**kwargs)
 
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _describe_asg(self, name):
+        return self.asg.describe_auto_scaling_groups(
+                    AutoScalingGroupNames=[name]
+                )
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _delete_asg(self, name):
+        self.asg.delete_auto_scaling_group(
+                    AutoScalingGroupName=name
+                )
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _delete_launch_config(self, name):
+        self.asg.delete_launch_configuration(
+                    LaunchConfigurationName=name
+                )
