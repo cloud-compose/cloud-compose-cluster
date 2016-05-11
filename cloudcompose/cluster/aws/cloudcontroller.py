@@ -243,7 +243,7 @@ class CloudController:
         lc_name      = "%s-%s" % (cluster_name, string_time)
 
         if cloud_init:
-            cloud_init_script = cloud_init.build(node_id=cluster_name)
+            cloud_init_script = cloud_init.build(self.config_data, node_id=cluster_name)
 
         return {
             "LaunchConfigurationName": lc_name,
