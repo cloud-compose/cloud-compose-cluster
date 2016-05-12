@@ -137,6 +137,7 @@ class CloudController:
         term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
         instance_tags = self._build_instance_tags(None, {})
 
+
         return {
             'AutoScalingGroupName': asg_name,
             'LaunchConfigurationName': lc_name,
@@ -245,7 +246,8 @@ class CloudController:
         if cloud_init:
             cloud_init_script = cloud_init.build(self.config_data, node_id=cluster_name)
 
-        return {
+
+        launch_config_args = {
             "LaunchConfigurationName": lc_name,
             "ImageId": self.aws['ami'],
             "SecurityGroups": self.aws['security_groups'],
@@ -259,6 +261,12 @@ class CloudController:
             }
         }
 
+        if self.instance_policy:
+            self._create_instance_policy(self.instance_policy)
+            launch_config_args['IamInstanceProfile'] = self.cluster_name
+
+        return launch_config_args
+
     def _build_launch_config(self, block_device_map, cloud_init):
         kwargs = self._launch_config_args(block_device_map, cloud_init)
         self._create_launch_configs(**kwargs)
@@ -268,7 +276,8 @@ class CloudController:
     def _is_retryable_exception(exception):
         return isinstance(exception, botocore.exceptions.ClientError) and \
            (exception.response["Error"]["Code"] in ['InvalidIPAddress.InUse', 'InvalidInstanceID.NotFound'] or
-            'Invalid IAM Instance Profile name' in exception.response["Error"]["Message"])
+            'Invalid IAM Instance Profile name' in exception.response["Error"]["Message"] or
+            'Invalid IamInstanceProfile' in exception.response["Error"]["Message"])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _find_existing_instance_id(self, private_ip):
