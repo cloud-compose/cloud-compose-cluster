@@ -39,6 +39,7 @@ class CloudController:
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def up(self, cloud_init=None, use_snapshots=True):
+        self._resolve_ami_name()
         block_device_map = self._block_device_map(use_snapshots)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
@@ -85,6 +86,19 @@ class CloudController:
         else:
             print 'cleanup has no effect for non-ASG clusters'
             print 'use cloud-compose cluster down to remove instances'
+
+    def _resolve_ami_name(self):
+        ami = self.aws['ami']
+        if ami.startswith('ami-'):
+            return
+
+        images = self._ec2_describe_images(Filters=[{'Name': 'tag:Name', 'Values': [ami]}])
+
+        for image in sorted(images, reverse=True, key=lambda image: image['CreationDate']):
+            if 'ImageId' in image:
+                # get the newest image with the name tag that matches
+                self.aws['ami'] = image['ImageId']
+                break
 
     def _block_device_map(self, use_snapshots):
         controller = EBSController(self.ec2, self.cluster_name)
@@ -329,6 +343,10 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_describe_instances(self, **kwargs):
         return self.ec2.describe_instances(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_describe_images(self, **kwargs):
+        return self.ec2.describe_images(**kwargs)['Images']
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _describe_asg(self, name):
