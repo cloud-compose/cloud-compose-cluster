@@ -1,6 +1,6 @@
 import botocore
 import boto3
-from util import require_env_var
+from cloudcompose.util import require_env_var
 from retrying import retry
 from os import environ
 

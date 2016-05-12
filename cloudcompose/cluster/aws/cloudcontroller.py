@@ -5,7 +5,7 @@ from cloudcompose.exceptions import CloudComposeException
 from iam import InstancePolicyController
 from ebs import EBSController
 from cloudwatch import LogsController
-from util import require_env_var
+from cloudcompose.util import require_env_var
 import boto3
 import botocore
 from time import sleep
