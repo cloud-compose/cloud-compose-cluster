@@ -38,8 +38,8 @@ class CloudController:
                             aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
-    def up(self, cloud_init=None, use_snapshots=True):
-        self._resolve_ami_name()
+    def up(self, cloud_init=None, use_snapshots=True, upgrade_image=False):
+        self.aws['ami'] = self._resolve_ami_name(upgrade_image)
         block_device_map = self._block_device_map(use_snapshots)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
@@ -87,18 +87,50 @@ class CloudController:
             print 'cleanup has no effect for non-ASG clusters'
             print 'use cloud-compose cluster down to remove instances'
 
-    def _resolve_ami_name(self):
-        ami = self.aws['ami']
-        if ami.startswith('ami-'):
-            return
+    def _resolve_ami_name(self, upgrade_image):
+        if self.aws['ami'].startswith('ami-'):
+            return self.aws['ami']
 
+        ami = None
+        message = None
+
+        if not upgrade_image and not self.aws.get('asg'):
+            ami = self._find_ami_on_cluster()
+            if ami:
+                message = 'as used on other cluster nodes'
+
+        if not ami:
+            ami, creation_date = self._find_ami_by_name_tag()
+            if ami:
+                message = 'created on %s' % creation_date
+
+        if ami:
+            print 'ami %s resolves to %s %s' % (self.aws['ami'], ami, message)
+        else:
+            raise CloudComposeException('Unable to resolve AMI %s' % self.aws['ami'])
+
+        return ami
+
+    def _find_ami_by_name_tag(self):
+        ami = self.aws['ami']
         images = self._ec2_describe_images(Filters=[{'Name': 'tag:Name', 'Values': [ami]}])
 
         for image in sorted(images, reverse=True, key=lambda image: image['CreationDate']):
             if 'ImageId' in image:
                 # get the newest image with the name tag that matches
-                self.aws['ami'] = image['ImageId']
-                break
+                return (image['ImageId'], image['CreationDate'])
+
+    def _find_ami_on_cluster(self):
+        filters = [
+            {"Name": "instance-state-name", "Values": ["running", "pending"]},
+            {"Name": "tag:ClusterName", "Values": [self.cluster_name]}
+        ]
+
+        instances = self._ec2_describe_instances(Filters=filters)
+        for reservation in instances.get('Reservations', []):
+            for instance in reservation.get('Instances', []):
+                if 'ImageId' in instance:
+                    return instance['ImageId']
 
     def _block_device_map(self, use_snapshots):
         controller = EBSController(self.ec2, self.cluster_name)
