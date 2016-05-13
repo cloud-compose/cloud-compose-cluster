@@ -90,7 +90,7 @@ The ``search_path`` is the directories that will be examined when looking for co
 The AWS section contains information needed to create the cluster on AWS.
 
 ##### ami
-The ``ami`` is the Amazon Machine Image to start the EC2 servers from before installing the Docker containers that you want to run on these servers.
+The ``ami`` is the Amazon Machine Image to start the EC2 servers from before installing the Docker containers that you want to run on these servers. The ``ami`` can either be an AMI ID (e.g. ami-1234567) or the Name tag applied to the AMI (e.g. docker:1.10). If the same Name tag exists on multiple images the newest image will be selected when creating a new cluster. If the cluster is being upgraded and is not an autoscaling group, then the Name tag will resolve to the same image in use by other cluster nodes. This will ensure that all nodes are running the same image. To override this behavior and resolve the Namge tag to the latest version regardless of whether cluster nodes will be consistent, use the --upgrade-image option on the cluster up command. Autoscaling group clusters are always upgrade to the latest image when using the Name tag reference because the launch config already provides a way for restoring cluster nodes such that all instances have the same image.
 
 ##### username
 The ``username`` is used by the ``cluster.sh`` script to start the Docker containers using that user account.
