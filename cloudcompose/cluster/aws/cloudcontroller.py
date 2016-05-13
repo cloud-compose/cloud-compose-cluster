@@ -204,7 +204,7 @@ class CloudController:
             raise ex
 
     def _create_instances(self, block_device_map, cloud_init):
-        instance_ids = {}
+        instances = {}
         kwargs = self._create_instance_args(block_device_map)
         if self.instance_policy:
             self._create_instance_policy(self.instance_policy)
@@ -226,14 +226,14 @@ class CloudController:
                 try:
                     response = self._ec2_run_instances(private_ip, **kwargs)
                     if response:
-                        instance_id = response['Instances'][0]['InstanceId']
-                        instance_ids[node['id']] = instance_id
+                        instance = response['Instances'][0]
+                        instances[node['id']] = instance
                     break
                 except botocore.exceptions.ClientError as ex:
                     print(ex.response["Error"]["Message"])
 
-        for node_id, instance_id in instance_ids.iteritems():
-            self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
+        for node_id, instance in instances.iteritems():
+            self._tag_instance(self.aws.get("tags", {}), node_id, instance)
 
     def _create_instance_policy(self, instance_policy):
         controller = InstancePolicyController(self.cluster_name)
@@ -243,10 +243,10 @@ class CloudController:
         controller = LogsController()
         controller.create_log_group(log_group, log_retention)
 
-    def _tag_instance(self, tags, node_id, instance_id):
+    def _tag_instance(self, tags, node_id, instance):
         instance_tags = self._build_instance_tags(node_id, tags)
-        self._ec2_create_tags(Resources=[instance_id], Tags=instance_tags)
-        print 'created %s-%s (%s)' % (self.cluster_name, node_id, instance_id)
+        self._ec2_create_tags(Resources=[instance['InstanceId']], Tags=instance_tags)
+        print 'created instance %s %s-%s (%s)' % (instance['InstanceId'], self.cluster_name, node_id, instance['PrivateIpAddress'])
 
     def _build_instance_tags(self, node_id, tags):
         instance_tags = [
@@ -317,7 +317,7 @@ class CloudController:
             'Invalid IAM Instance Profile name' in exception.response["Error"]["Message"])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
-    def _find_existing_instance_id(self, private_ip):
+    def _find_existing_instance(self, private_ip):
         filters = [
             {"Name": "instance-state-name", "Values": ["running", "pending"]},
             {"Name": "private-ip-address", "Values": [private_ip]},
@@ -327,8 +327,7 @@ class CloudController:
         instances = self._ec2_describe_instances(Filters=filters)
         for reservation in instances.get('Reservations', []):
             for instance in reservation.get('Instances', []):
-                if 'InstanceId' in instance:
-                    return instance['InstanceId']
+                return instance
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_run_instances(self, private_ip, **kwargs):
@@ -336,13 +335,23 @@ class CloudController:
             response = self.ec2.run_instances(**kwargs)
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "InvalidIPAddress.InUse":
-                instance_id = self._find_existing_instance_id(private_ip)
-                if instance_id:
-                    print "skipping %s (%s)" % (private_ip, instance_id)
+                instance = self._find_existing_instance(private_ip)
+                if instance:
+                    instance_name = self._find_instance_name(instance)
+                    instance_id = instance['InstanceId']
+                    print "skipping %s %s (%s)" % (instance_id, instance_name, private_ip)
                     return None
             raise ex
 
         return response
+
+    def _find_instance_name(self, instance):
+        instance_name = ''
+        for tag in instance.get('Tags', []):
+            if 'Key' in tag:
+                if tag['Key'].lower() == 'name':
+                    return tag['Value']
+        return instance_name
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_create(self, **kwargs):
