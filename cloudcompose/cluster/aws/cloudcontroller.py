@@ -5,7 +5,7 @@ from cloudcompose.exceptions import CloudComposeException
 from iam import InstancePolicyController
 from ebs import EBSController
 from cloudwatch import LogsController
-from util import require_env_var
+from cloudcompose.util import require_env_var
 import boto3
 import botocore
 from time import sleep
@@ -38,7 +38,8 @@ class CloudController:
                             aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
-    def up(self, cloud_init=None, use_snapshots=True):
+    def up(self, cloud_init=None, use_snapshots=True, upgrade_image=False):
+        self.aws['ami'] = self._resolve_ami_name(upgrade_image)
         block_device_map = self._block_device_map(use_snapshots)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
@@ -85,6 +86,51 @@ class CloudController:
         else:
             print 'cleanup has no effect for non-ASG clusters'
             print 'use cloud-compose cluster down to remove instances'
+
+    def _resolve_ami_name(self, upgrade_image):
+        if self.aws['ami'].startswith('ami-'):
+            return self.aws['ami']
+
+        ami = None
+        message = None
+
+        if not upgrade_image and not self.aws.get('asg'):
+            ami = self._find_ami_on_cluster()
+            if ami:
+                message = 'as used on other cluster nodes'
+
+        if not ami:
+            ami, creation_date = self._find_ami_by_name_tag()
+            if ami:
+                message = 'created on %s' % creation_date
+
+        if ami:
+            print 'ami %s resolves to %s %s' % (self.aws['ami'], ami, message)
+        else:
+            raise CloudComposeException('Unable to resolve AMI %s' % self.aws['ami'])
+
+        return ami
+
+    def _find_ami_by_name_tag(self):
+        ami = self.aws['ami']
+        images = self._ec2_describe_images(Filters=[{'Name': 'tag:Name', 'Values': [ami]}])
+
+        for image in sorted(images, reverse=True, key=lambda image: image['CreationDate']):
+            if 'ImageId' in image:
+                # get the newest image with the name tag that matches
+                return (image['ImageId'], image['CreationDate'])
+
+    def _find_ami_on_cluster(self):
+        filters = [
+            {"Name": "instance-state-name", "Values": ["running", "pending"]},
+            {"Name": "tag:ClusterName", "Values": [self.cluster_name]}
+        ]
+
+        instances = self._ec2_describe_instances(Filters=filters)
+        for reservation in instances.get('Reservations', []):
+            for instance in reservation.get('Instances', []):
+                if 'ImageId' in instance:
+                    return instance['ImageId']
 
     def _block_device_map(self, use_snapshots):
         controller = EBSController(self.ec2, self.cluster_name)
@@ -159,7 +205,7 @@ class CloudController:
             raise ex
 
     def _create_instances(self, block_device_map, cloud_init):
-        instance_ids = {}
+        instances = {}
         kwargs = self._create_instance_args(block_device_map)
         if self.instance_policy:
             self._create_instance_policy(self.instance_policy)
@@ -181,14 +227,14 @@ class CloudController:
                 try:
                     response = self._ec2_run_instances(private_ip, **kwargs)
                     if response:
-                        instance_id = response['Instances'][0]['InstanceId']
-                        instance_ids[node['id']] = instance_id
+                        instance = response['Instances'][0]
+                        instances[node['id']] = instance
                     break
                 except botocore.exceptions.ClientError as ex:
                     print(ex.response["Error"]["Message"])
 
-        for node_id, instance_id in instance_ids.iteritems():
-            self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
+        for node_id, instance in instances.iteritems():
+            self._tag_instance(self.aws.get("tags", {}), node_id, instance)
 
     def _create_instance_policy(self, instance_policy):
         controller = InstancePolicyController(self.cluster_name)
@@ -198,10 +244,10 @@ class CloudController:
         controller = LogsController()
         controller.create_log_group(log_group, log_retention)
 
-    def _tag_instance(self, tags, node_id, instance_id):
+    def _tag_instance(self, tags, node_id, instance):
         instance_tags = self._build_instance_tags(node_id, tags)
-        self._ec2_create_tags(Resources=[instance_id], Tags=instance_tags)
-        print 'created %s-%s (%s)' % (self.cluster_name, node_id, instance_id)
+        self._ec2_create_tags(Resources=[instance['InstanceId']], Tags=instance_tags)
+        print 'created instance %s %s-%s (%s)' % (instance['InstanceId'], self.cluster_name, node_id, instance['PrivateIpAddress'])
 
     def _build_instance_tags(self, node_id, tags):
         instance_tags = [
@@ -280,7 +326,7 @@ class CloudController:
             'Invalid IamInstanceProfile' in exception.response["Error"]["Message"])
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
-    def _find_existing_instance_id(self, private_ip):
+    def _find_existing_instance(self, private_ip):
         filters = [
             {"Name": "instance-state-name", "Values": ["running", "pending"]},
             {"Name": "private-ip-address", "Values": [private_ip]},
@@ -290,8 +336,7 @@ class CloudController:
         instances = self._ec2_describe_instances(Filters=filters)
         for reservation in instances.get('Reservations', []):
             for instance in reservation.get('Instances', []):
-                if 'InstanceId' in instance:
-                    return instance['InstanceId']
+                return instance
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_run_instances(self, private_ip, **kwargs):
@@ -299,13 +344,23 @@ class CloudController:
             response = self.ec2.run_instances(**kwargs)
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "InvalidIPAddress.InUse":
-                instance_id = self._find_existing_instance_id(private_ip)
-                if instance_id:
-                    print "skipping %s (%s)" % (private_ip, instance_id)
+                instance = self._find_existing_instance(private_ip)
+                if instance:
+                    instance_name = self._find_instance_name(instance)
+                    instance_id = instance['InstanceId']
+                    print "skipping %s %s (%s)" % (instance_id, instance_name, private_ip)
                     return None
             raise ex
 
         return response
+
+    def _find_instance_name(self, instance):
+        instance_name = ''
+        for tag in instance.get('Tags', []):
+            if 'Key' in tag:
+                if tag['Key'].lower() == 'name':
+                    return tag['Value']
+        return instance_name
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_create(self, **kwargs):
@@ -338,6 +393,10 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_describe_instances(self, **kwargs):
         return self.ec2.describe_instances(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_describe_images(self, **kwargs):
+        return self.ec2.describe_images(**kwargs)['Images']
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _describe_asg(self, name):

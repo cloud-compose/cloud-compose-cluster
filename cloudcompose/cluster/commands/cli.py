@@ -10,7 +10,8 @@ def cli():
 @cli.command()
 @click.option('--cloud-init/--no-cloud-init', default=True, help="Initialize the instance with a cloud init script")
 @click.option('--use-snapshots/--no-use-snapshots', default=True, help="Use snapshots to initialize volumes with existing data")
-def up(cloud_init, use_snapshots):
+@click.option('--upgrade-image/--no-upgrade-image', default=False, help="Upgrade the image to the newest version instead of keeping the cluster consistent")
+def up(cloud_init, use_snapshots, upgrade_image):
     """
     creates a new cluster
     """
@@ -21,7 +22,7 @@ def up(cloud_init, use_snapshots):
         ci = CloudInit()
 
     cloud_controller = CloudController(cloud_config)
-    cloud_controller.up(ci, use_snapshots)
+    cloud_controller.up(ci, use_snapshots, upgrade_image)
 
 @cli.command()
 def down():
