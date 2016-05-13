@@ -41,7 +41,6 @@ cluster:
     username: ${IMAGE_USERNAME}
     terminate_protection: false
     security_groups: ${SECURITY_GROUP_ID}
-    vpc: ${VPC_ID}
     ebs_optimized: false
     instance_type: t2.medium
     keypair: drydock
@@ -100,9 +99,6 @@ The ``username`` is used by the ``cluster.sh`` script to start the Docker contai
 
 ##### security
 The list of ``security_groups`` that should be added to the EC2 servers.
-
-##### vpc
-The ``vpc`` identifier to launch the EC2 servers in.
 
 ##### ebs_optimized (optional)
 Set ``ebs_optimized`` to true if you want EC2 servers with this featured turned on. The default value is false.
