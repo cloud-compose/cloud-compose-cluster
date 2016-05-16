@@ -1,9 +1,14 @@
 cluster:
-  name: simple
+  name: subtree 
   search_path:
     - templates
+    - docker-mongodb
+    - docker-mongodb/cloud-compose/templates
   aws:
-    security_groups: sg-abc123
+    security_groups: 
+      - sg-abc123
+      - sg-def456
+      - sg-hij789
     volumes:
       - name: data
         size: 10G
@@ -14,4 +19,4 @@ cluster:
           mount: /data/mongodb
     nodes:
       - id: 0
-        ip: 10.0.10.10
+        ip: 10.0.11.10

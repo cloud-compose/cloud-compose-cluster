@@ -14,7 +14,7 @@ from retrying import retry
 from pprint import pprint
 
 class CloudController:
-    def __init__(self, cloud_config):
+    def __init__(self, cloud_config, ec2_client=None, asg_client=None):
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
@@ -25,8 +25,8 @@ class CloudController:
         self.log_retention = self.config_data.get('logging', {}).get('meta', {}).get('retention')
         self.instance_policy = self.aws.get('instance_policy')
         self.cluster_name = self.config_data['name']
-        self.ec2 = self._get_ec2_client()
-        self.asg = self._get_asg_client()
+        self.ec2 = ec2_client or self._get_ec2_client()
+        self.asg = asg_client or self._get_asg_client()
 
     def _get_ec2_client(self):
         return boto3.client('ec2', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
@@ -152,10 +152,16 @@ class CloudController:
 
         return instance_ids
 
+    def security_groups(self):
+        security_groups = self.aws['security_groups']
+        if isinstance(security_groups, basestring):
+            security_groups = security_groups.split(',')
+        return security_groups
+
     def _create_instance_args(self, block_device_map):
         ami = self.aws['ami']
         keypair = self.aws['keypair']
-        security_groups = self.aws['security_groups'].split(',')
+        security_groups = self.security_groups()
         instance_type = self.aws['instance_type']
         terminate_protection = self.aws.get('terminate_protection', True)
         detailed_monitoring = self.aws.get('detailed_monitoring', False)
@@ -296,7 +302,7 @@ class CloudController:
         launch_config_args = {
             "LaunchConfigurationName": lc_name,
             "ImageId": self.aws['ami'],
-            "SecurityGroups": self.aws['security_groups'],
+            "SecurityGroups": self.security_groups(),
             "InstanceType": self.aws['instance_type'],
             "UserData": cloud_init_script,
             "KeyName": self.aws['keypair'],
