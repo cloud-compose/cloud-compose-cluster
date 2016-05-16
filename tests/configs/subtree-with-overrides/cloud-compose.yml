@@ -5,6 +5,9 @@ cluster:
     - docker-mongodb
     - docker-mongodb/cloud-compose/templates
   aws:
+    security_groups: 
+      - sg-abc123
+      - sg-def456
     volumes:
       - name: data
         size: 10G
