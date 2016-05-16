@@ -51,13 +51,19 @@ class CloudController:
     def down(self):
         if self.aws.get('asg'):
             asg_name = self.cluster_name
-            self.asg.update_auto_scaling_group(
-                                    AutoScalingGroupName=asg_name,
-                                    MinSize=0,
-                                    MaxSize=0,
-                                    DesiredCapacity=0
-            )
-            print 'asg group %s size has been set to 0' % asg_name
+            try:
+                self._asg_update_auto_scaling_group(
+                                        AutoScalingGroupName=asg_name,
+                                        MinSize=0,
+                                        MaxSize=0,
+                                        DesiredCapacity=0)
+                print 'auto scaling group %s size is now 0' % asg_name
+            except botocore.exceptions.ClientError as ex:
+                if ex.response["Error"]["Code"] == 'ValidationError':
+                    print 'auto scaling group %s does not exist' % asg_name
+                else:
+                    raise ex
+
         else:
             ips = [node['ip'] for node in self.aws.get('nodes', [])]
             instance_ids = self._instance_ids_from_private_ip(ips)
@@ -67,7 +73,6 @@ class CloudController:
 
     def cleanup(self):
         if self.aws.get('asg'):
-            print 'cleaning up!'
             asg_name = self.cluster_name
             asg_details = self._describe_asg(asg_name)
 
@@ -75,7 +80,7 @@ class CloudController:
             asg_instances = len(asg_details["AutoScalingGroups"][0]["Instances"])
 
             if asg_instances != 0:
-                print 'autoscaling group %s still has %s active instances. delete cancelled' % (asg_name, asg_instances)
+                print 'unable to delete autoscaling group %s because of %s active instances' % (asg_name, asg_instances)
                 print 'run cloud-compose cluster down first or wait for instances to terminate'
             else:
                 self._delete_asg(asg_name)
@@ -205,8 +210,7 @@ class CloudController:
     def _create_asg(self, block_device_map, cloud_init):
         kwargs = self._create_asg_args(block_device_map, cloud_init)
         try:
-            code = self._asg_create(**kwargs)
-            print 'created AutoScalingGroup with name %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
+            self._asg_create(**kwargs)
         except botocore.exceptions.ClientError as ex:
             raise ex
 
@@ -326,10 +330,10 @@ class CloudController:
         return kwargs['LaunchConfigurationName']
 
     def _is_retryable_exception(exception):
-        return isinstance(exception, botocore.exceptions.ClientError) and \
-           (exception.response["Error"]["Code"] in ['InvalidIPAddress.InUse', 'InvalidInstanceID.NotFound'] or
+        return not isinstance(exception, botocore.exceptions.ClientError) or \
+            ((exception.response["Error"]["Code"] in ['InvalidIPAddress.InUse', 'InvalidInstanceID.NotFound'] or
             'Invalid IAM Instance Profile name' in exception.response["Error"]["Message"] or
-            'Invalid IamInstanceProfile' in exception.response["Error"]["Message"])
+            'Invalid IamInstanceProfile' in exception.response["Error"]["Message"]))
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _find_existing_instance(self, private_ip):
@@ -368,8 +372,26 @@ class CloudController:
                     return tag['Value']
         return instance_name
 
-    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_create(self, **kwargs):
+        try:
+            self._asg_create_auto_scaling_group(**kwargs)
+            print 'created auto scaling group %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
+        except botocore.exceptions.ClientError as ex:
+            if ex.response["Error"]["Code"] == "AlreadyExists":
+                print 'updated auto scaling group %s launch config %s' % (self.cluster_name, kwargs['LaunchConfigurationName'])
+                self._asg_update_auto_scaling_group(
+                    AutoScalingGroupName=kwargs['AutoScalingGroupName'],
+                    LaunchConfigurationName=kwargs['LaunchConfigurationName'],
+                    VPCZoneIdentifier=kwargs['VPCZoneIdentifier'])
+            else:
+                raise ex
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_update_auto_scaling_group(self, **kwargs):
+        return self.asg.update_auto_scaling_group(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_create_auto_scaling_group(self, **kwargs):
         return self.asg.create_auto_scaling_group(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
