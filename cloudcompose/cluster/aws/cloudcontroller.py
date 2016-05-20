@@ -192,8 +192,9 @@ class CloudController:
         redundancy    = self.aws['asg'].get('redundancy', 1)
         lc_name       = self._build_launch_config(block_device_map, cloud_init)
         term_policies = ["OldestLaunchConfiguration", "OldestInstance", "Default"]
-        instance_tags = self._build_instance_tags(None, {})
-
+        tags = self.aws.get("tags", {})
+        tags['Name'] = self.cluster_name
+        instance_tags = self._build_instance_tags(tags)
 
         return {
             'AutoScalingGroupName': asg_name,
@@ -255,35 +256,19 @@ class CloudController:
         controller.create_log_group(log_group, log_retention)
 
     def _tag_instance(self, tags, node_id, instance):
-        instance_tags = self._build_instance_tags(node_id, tags)
+        tags['NodeId'] = str(node_id)
+        tags['Name'] = '%s-%s' % (self.cluster_name, node_id)
+        instance_tags = self._build_instance_tags(tags)
         self._ec2_create_tags(Resources=[instance['InstanceId']], Tags=instance_tags)
         print 'created instance %s %s-%s (%s)' % (instance['InstanceId'], self.cluster_name, node_id, instance['PrivateIpAddress'])
 
-    def _build_instance_tags(self, node_id, tags):
+    def _build_instance_tags(self, tags):
         instance_tags = [
             {
                 'Key': 'ClusterName',
                 'Value': self.cluster_name
             }
         ]
-
-        if not self.aws.get('asg'):
-            instance_tags.append(
-            {
-                'Key': 'NodeId',
-                'Value' : str(node_id),
-            })
-            instance_tags.append(
-            {
-                'Key': 'Name',
-                'Value' : ('%s-%s' % (self.cluster_name, node_id)),
-            })
-        else:
-            instance_tags.append(
-            {
-                'Key': 'Name',
-                'Value' : self.cluster_name,
-            })
 
         for key, value in tags.items():
             instance_tags.append({
@@ -379,12 +364,27 @@ class CloudController:
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "AlreadyExists":
                 print 'updated auto scaling group %s launch config %s' % (self.cluster_name, kwargs['LaunchConfigurationName'])
-                self._asg_update_auto_scaling_group(
-                    AutoScalingGroupName=kwargs['AutoScalingGroupName'],
-                    LaunchConfigurationName=kwargs['LaunchConfigurationName'],
-                    VPCZoneIdentifier=kwargs['VPCZoneIdentifier'])
+                self._asg_update(**kwargs)
             else:
                 raise ex
+
+    def _asg_update(self, **kwargs):
+        self._asg_update_auto_scaling_group(
+            AutoScalingGroupName=kwargs['AutoScalingGroupName'],
+            LaunchConfigurationName=kwargs['LaunchConfigurationName'],
+            VPCZoneIdentifier=kwargs['VPCZoneIdentifier'])
+
+        tags = []
+        for tag in kwargs.get('Tags', []):
+            if 'Key' in tag and 'Value' in tag:
+                tags.append({'ResourceId': kwargs['AutoScalingGroupName'],
+                             'ResourceType': 'auto-scaling-group',
+                             'Key': tag['Key'],
+                             'Value': tag['Value'],
+                             'PropagateAtLaunch': True})
+
+        if len(tags) > 0:
+            self._asg_create_or_update_tags(Tags=tags)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_update_auto_scaling_group(self, **kwargs):
@@ -397,6 +397,10 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_create_or_update_tags(self, **kwargs):
+        return self.asg.create_or_update_tags(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _create_launch_configs(self, **kwargs):
