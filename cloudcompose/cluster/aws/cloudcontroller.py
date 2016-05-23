@@ -278,6 +278,7 @@ class CloudController:
 
         return instance_tags
 
+    # TODO Im sure asg triggers goes here 😎
     def _launch_config_args(self, block_device_map, cloud_init):
         cluster_name = self.cluster_name
         timestamp    = time.time()
