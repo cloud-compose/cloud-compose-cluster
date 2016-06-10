@@ -16,7 +16,7 @@ class CloudInit(BaseCloudInit):
     def _add_custom_environment(self, config_data):
         for key, val in config_data.get('environment', {}).iteritems():
             if key not in environ:
-                environ[key] = str(val)
+                environ[key] = Template.render_string(str(val), environ)
 
     def _add_docker_compose(self, config_data):
         docker_compose = DockerCompose(self.search_path(config_data))

@@ -9,11 +9,19 @@ class Template:
         self.env = jinja2.Environment(loader=jinja2.FileSystemLoader(search_path), undefined=jinja2.StrictUndefined)
 
     def render(self, template_file, template_data):
-        self._add_environment(template_data)
-        template_obj = self.env.get_template(template_file)
+        return self._render(self.env.get_template(template_file), template_data)
+
+    @classmethod
+    def render_string(cls, template_string, template_data):
+        return cls._render(jinja2.Template(template_string), template_data)
+
+    @classmethod
+    def _render(cls, template_obj, template_data):
+        cls._add_environment(template_data)
         return template_obj.render(template_data)
 
-    def _add_environment(self, template_data):
+    @classmethod
+    def _add_environment(cls, template_data):
         for key in environ.keys():
             if key not in template_data:
                 template_data[key] = environ[key]
