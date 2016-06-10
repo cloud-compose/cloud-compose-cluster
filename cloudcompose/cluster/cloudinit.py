@@ -14,7 +14,7 @@ class CloudInit(BaseCloudInit):
         self._add_docker_compose(config_data)
 
     def _add_custom_environment(self, config_data):
-        for key, val in config_data['environment'].iteritems():
+        for key, val in config_data.get('environment', {}).iteritems():
             if key not in environ:
                 environ[key] = val
 
