@@ -20,4 +20,6 @@ mongodb:
     - "node0:10.0.10.10"
   volumes:
     - "/data/mongodb/mongodb:/data/db"
+  environment:
+    MONGODB_OPTIONS: "-h"
 EOF

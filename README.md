@@ -36,6 +36,8 @@ cluster:
   search_path:
     - docker-mongodb
     - docker-mongodb/cloud-compose/templates
+  environment:
+    FOOBAR: "baz"
   aws:
     ami: ${IMAGE_ID}
     username: ${IMAGE_USERNAME}
@@ -84,6 +86,9 @@ The ``name`` is the unique name of this cluster. This is also added as a tag to 
 
 #### search_path 
 The ``search_path`` is the directories that will be examined when looking for configuration files like the ``cluster.sh`` file and the ``docker-compose.override.yml``.
+
+#### environment
+The ``environment`` is a list of environment variables that should be used when rendering the template files. This allows you to add environment options to a cluster and versioning them with the rest of your configs.
 
 #### AWS
 The AWS section contains information needed to create the cluster on AWS.

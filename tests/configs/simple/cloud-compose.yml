@@ -2,6 +2,8 @@ cluster:
   name: simple
   search_path:
     - templates
+  environment:
+    MONGODB_OPTIONS: "-h"
   aws:
     security_groups: sg-abc123
     volumes:

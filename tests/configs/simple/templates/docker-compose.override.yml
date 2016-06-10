@@ -6,3 +6,7 @@ mongodb:
   {%- endfor %}
   volumes:
     - "/data/mongodb/mongodb:/data/db"
+  {%- if MONGODB_OPTIONS is defined %}
+  environment:
+    MONGODB_OPTIONS: "{{MONGODB_OPTIONS}}"
+  {%- endif %}
