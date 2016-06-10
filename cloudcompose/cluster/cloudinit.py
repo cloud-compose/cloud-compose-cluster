@@ -22,5 +22,7 @@ class CloudInit(BaseCloudInit):
         docker_compose = DockerCompose(self.search_path(config_data))
         docker_compose, docker_compose_override = docker_compose.yaml_files(config_data)
         config_data['docker_compose'] = {}
-        config_data['docker_compose']['yaml'] = docker_compose
-        config_data['docker_compose']['override_yaml'] = docker_compose_override
+        if docker_compose:
+            config_data['docker_compose']['yaml'] = docker_compose
+        if docker_compose_override:
+            config_data['docker_compose']['override_yaml'] = docker_compose_override
