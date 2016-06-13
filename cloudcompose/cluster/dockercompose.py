@@ -14,7 +14,8 @@ class DockerCompose:
 
     def _read_docker_compose(self):
         docker_compose_path = self._find_docker_compose_path()
-        return self._read_file(docker_compose_path)
+        if docker_compose_path:
+            return self._read_file(docker_compose_path)
 
     def _find_docker_compose_path(self):
         for search_dir in self.search_path:
@@ -30,8 +31,9 @@ class DockerCompose:
 
     def _render_docker_compose_override(self, config_data):
         docker_compose_override_path = self._find_docker_compose_override_path()
-        template_dir, template_file = split(docker_compose_override_path)
-        return self._render_template(template_dir, template_file, config_data)
+        if docker_compose_override_path:
+            template_dir, template_file = split(docker_compose_override_path)
+            return self._render_template(template_dir, template_file, config_data)
 
     def _find_docker_compose_override_path(self):
         for search_dir in self.search_path:

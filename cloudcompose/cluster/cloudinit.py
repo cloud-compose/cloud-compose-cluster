@@ -16,11 +16,13 @@ class CloudInit(BaseCloudInit):
     def _add_custom_environment(self, config_data):
         for key, val in config_data.get('environment', {}).iteritems():
             if key not in environ:
-                environ[key] = val
+                environ[key] = Template.render_string(str(val), environ)
 
     def _add_docker_compose(self, config_data):
         docker_compose = DockerCompose(self.search_path(config_data))
         docker_compose, docker_compose_override = docker_compose.yaml_files(config_data)
         config_data['docker_compose'] = {}
-        config_data['docker_compose']['yaml'] = docker_compose
-        config_data['docker_compose']['override_yaml'] = docker_compose_override
+        if docker_compose:
+            config_data['docker_compose']['yaml'] = docker_compose
+        if docker_compose_override:
+            config_data['docker_compose']['override_yaml'] = docker_compose_override

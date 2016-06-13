@@ -187,6 +187,7 @@ class CloudController:
     def _create_asg_args(self, block_device_map, cloud_init):
         asg_name      = self.cluster_name
         subnet_list   = self.aws['asg']['subnets']
+        elb_list   = self.aws['asg'].get('elbs', [])
         vpc_zones     = ', '.join(subnet_list)
         cluster_size  = len(subnet_list)
         redundancy    = self.aws['asg'].get('redundancy', 1)
@@ -202,7 +203,7 @@ class CloudController:
             'MinSize': cluster_size * redundancy,
             'MaxSize': cluster_size * redundancy,
             'DesiredCapacity': cluster_size * redundancy,
-            'LoadBalancerNames': [],
+            'LoadBalancerNames': elb_list,
             'VPCZoneIdentifier': vpc_zones,
             'TerminationPolicies': term_policies,
             'Tags': instance_tags

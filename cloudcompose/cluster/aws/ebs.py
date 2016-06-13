@@ -9,6 +9,9 @@ class EBSController:
     def block_device_map(self, volumes, default_device, use_snapshots):
         block_device_map = []
         for volume in volumes:
+            file_system = volume.get('file_system')
+            if file_system and file_system.lower() in ['nfs', 'nfs4']:
+                continue
             block_device_map.append(self._create_volume_config(volume, default_device, use_snapshots))
 
         return block_device_map
