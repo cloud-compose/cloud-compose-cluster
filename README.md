@@ -11,7 +11,7 @@ Once you have the configuration files run the following commands to start the cl
 ```
 cd my-configs
 pip install cloud-compose cloud-compose-cluster
-pip freeze -r > requirements.txt
+pip freeze > requirements.txt
 cloud-compose cluster up
 ```
 
