@@ -237,16 +237,23 @@ class CloudController:
             while retries < max_retries:
                 retries += 1
                 try:
-                    response = self._ec2_run_instances(private_ip, **kwargs)
-                    if response:
-                        instance = response['Instances'][0]
-                        instances[node['id']] = instance
+                    instance_id, created = self._ec2_run_instances(private_ip, **kwargs)
+                    if instance_id:
+                        instances[node['id']] = (instance_id, private_ip, created)
                     break
                 except botocore.exceptions.ClientError as ex:
                     print(ex.response["Error"]["Message"])
 
-        for node_id, instance in instances.iteritems():
-            self._tag_instance(self.aws.get("tags", {}), node_id, instance)
+        for node_id, instance_data in instances.iteritems():
+            instance_id = instance_data[0]
+            private_ip = instance_data[1]
+            created = instance_data[2]
+            instance_name = "%s-%s" % (self.cluster_name, node_id)
+            self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
+            prefix = 'skipping'
+            if created:
+                prefix = 'created'
+            print "%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip)
 
     def _create_instance_policy(self, instance_policy):
         controller = InstancePolicyController(self.cluster_name)
@@ -256,12 +263,15 @@ class CloudController:
         controller = LogsController()
         controller.create_log_group(log_group, log_retention)
 
-    def _tag_instance(self, tags, node_id, instance):
-        tags['NodeId'] = str(node_id)
+    def _tag_instance(self, tags, node_id, instance_id):
         tags['Name'] = '%s-%s' % (self.cluster_name, node_id)
         instance_tags = self._build_instance_tags(tags)
-        self._ec2_create_tags(Resources=[instance['InstanceId']], Tags=instance_tags)
-        print 'created instance %s %s-%s (%s)' % (instance['InstanceId'], self.cluster_name, node_id, instance['PrivateIpAddress'])
+        self._ec2_create_tags(Resources=[instance_id], Tags=instance_tags)
+
+        #NodeId tag is no longer set, this will remove it for existing clusters
+        #This code can be removed in the next release
+        remove_tags = [{'Key': 'NodeId'}]
+        self._ec2_delete_tags(Resources=[instance_id], Tags=remove_tags)
 
     def _build_instance_tags(self, tags):
         instance_tags = [
@@ -338,17 +348,16 @@ class CloudController:
     def _ec2_run_instances(self, private_ip, **kwargs):
         try:
             response = self.ec2.run_instances(**kwargs)
+            return response.get['Instances'][0]['InstanceId'], True
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "InvalidIPAddress.InUse":
                 instance = self._find_existing_instance(private_ip)
                 if instance:
                     instance_name = self._find_instance_name(instance)
                     instance_id = instance['InstanceId']
-                    print "skipping %s %s (%s)" % (instance_id, instance_name, private_ip)
-                    return None
+                    return instance_id, False
             raise ex
-
-        return response
+        return None, False
 
     def _find_instance_name(self, instance):
         instance_name = ''
@@ -370,22 +379,38 @@ class CloudController:
                 raise ex
 
     def _asg_update(self, **kwargs):
+        tags = kwargs.get('Tags', [])
         self._asg_update_auto_scaling_group(
             AutoScalingGroupName=kwargs['AutoScalingGroupName'],
             LaunchConfigurationName=kwargs['LaunchConfigurationName'],
             VPCZoneIdentifier=kwargs['VPCZoneIdentifier'])
 
-        tags = []
-        for tag in kwargs.get('Tags', []):
+        asg_tags = []
+        for tag in tags:
             if 'Key' in tag and 'Value' in tag:
-                tags.append({'ResourceId': kwargs['AutoScalingGroupName'],
+                asg_tags.append({'ResourceId': kwargs['AutoScalingGroupName'],
                              'ResourceType': 'auto-scaling-group',
                              'Key': tag['Key'],
                              'Value': tag['Value'],
                              'PropagateAtLaunch': True})
 
-        if len(tags) > 0:
-            self._asg_create_or_update_tags(Tags=tags)
+        if len(asg_tags) > 0:
+            self._asg_create_or_update_tags(Tags=asg_tags)
+            self._tag_existing_asg_instances(tags)
+
+    def _tag_existing_asg_instances(self, tags):
+        instance_ids = []
+        filters = [
+            {"Name": "instance-state-name", "Values": ["running", "pending"]},
+            {"Name": "tag:aws:autoscaling:groupName", "Values": [self.cluster_name]}
+        ]
+
+        instances = self._ec2_describe_instances(Filters=filters)
+        for reservation in instances.get('Reservations', []):
+            for instance in reservation.get('Instances', []):
+                instance_ids.append(instance['InstanceId'])
+
+        self._ec2_create_tags(Resources=instance_ids, Tags=tags)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_update_auto_scaling_group(self, **kwargs):
@@ -398,6 +423,10 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_create_tags(self, **kwargs):
         return self.ec2.create_tags(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_delete_tags(self, **kwargs):
+        return self.ec2.delete_tags(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_create_or_update_tags(self, **kwargs):
