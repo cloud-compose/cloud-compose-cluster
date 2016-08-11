@@ -244,6 +244,7 @@ class CloudController:
                 except botocore.exceptions.ClientError as ex:
                     print(ex.response["Error"]["Message"])
 
+            print('done')
         for node_id, instance_data in instances.iteritems():
             instance_id = instance_data[0]
             private_ip = instance_data[1]
@@ -348,7 +349,7 @@ class CloudController:
     def _ec2_run_instances(self, private_ip, **kwargs):
         try:
             response = self.ec2.run_instances(**kwargs)
-            return response.get['Instances'][0]['InstanceId'], True
+            return response['Instances'][0]['InstanceId'], True
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "InvalidIPAddress.InUse":
                 instance = self._find_existing_instance(private_ip)
@@ -356,6 +357,8 @@ class CloudController:
                     instance_name = self._find_instance_name(instance)
                     instance_id = instance['InstanceId']
                     return instance_id, False
+                else:
+                    print('%s in use but not by an instance' % private_ip)
             raise ex
         return None, False
 
