@@ -32,7 +32,7 @@ setup(
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
     url="https://github.com/cloud-compose/cloud-compose-cluster",
-    download_url = "https://github.com/cloud-compose/cloud-compose-cluster/tarball/v0.6.1",
+    download_url = "https://github.com/cloud-compose/cloud-compose-cluster/tarball/v0.6.2",
     keywords = ['cloud', 'compose', 'aws'],
     classifiers = []
 )
