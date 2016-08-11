@@ -244,7 +244,6 @@ class CloudController:
                 except botocore.exceptions.ClientError as ex:
                     print(ex.response["Error"]["Message"])
 
-            print('done')
         for node_id, instance_data in instances.iteritems():
             instance_id = instance_data[0]
             private_ip = instance_data[1]
