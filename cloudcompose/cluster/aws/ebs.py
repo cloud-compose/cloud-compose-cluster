@@ -54,6 +54,10 @@ class EBSController:
                 "VolumeType": volume.get("volume_type", "gp2")
             }
         }
+
+        if volume_config['Ebs']['VolumeType'] == 'io1':
+            volume_config['Ebs']['Iops'] = volume.get("iops", volume_config['Ebs']['VolumeSize']*30)
+
         if use_snapshots:
             self._add_snapshot_id(volume_config, volume, device)
 
