@@ -1,5 +1,7 @@
 import boto3
 import botocore
+from cloudcompose.exceptions import CloudComposeException
+
 from retrying import retry
 class EBSController:
     def __init__(self, ec2, cluster_name):
@@ -56,7 +58,14 @@ class EBSController:
         }
 
         if volume_config['Ebs']['VolumeType'] == 'io1':
-            volume_config['Ebs']['Iops'] = volume.get("iops", volume_config['Ebs']['VolumeSize']*30)
+            max_iops = volume_config['Ebs']['VolumeSize']*30
+            iops = volume.get("iops", 100)
+
+            if iops > max_iops:
+                print 
+                raise CloudComposeException('Cluster not created\nSpecified IOPS (%s) is greater than the max (%s) with a volume size of %sG' % (iops, max_iops, volume_config['Ebs']['VolumeSize']))
+
+            volume_config['Ebs']['Iops'] = iops
 
         if use_snapshots:
             self._add_snapshot_id(volume_config, volume, device)
