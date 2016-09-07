@@ -62,7 +62,6 @@ class EBSController:
             iops = volume.get("iops", 100)
 
             if iops > max_iops:
-                print 
                 raise CloudComposeException('Cluster not created\nSpecified IOPS (%s) is greater than the max (%s) with a volume size of %sG' % (iops, max_iops, volume_config['Ebs']['VolumeSize']))
 
             volume_config['Ebs']['Iops'] = iops
