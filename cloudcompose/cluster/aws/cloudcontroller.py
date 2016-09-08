@@ -412,7 +412,8 @@ class CloudController:
             for instance in reservation.get('Instances', []):
                 instance_ids.append(instance['InstanceId'])
 
-        self._ec2_create_tags(Resources=instance_ids, Tags=tags)
+        if len(instance_ids) > 0:
+            self._ec2_create_tags(Resources=instance_ids, Tags=tags)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_update_auto_scaling_group(self, **kwargs):
