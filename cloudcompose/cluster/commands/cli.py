@@ -29,14 +29,15 @@ def up(cloud_init, use_snapshots, upgrade_image):
         print ex.message
 
 @cli.command()
-def down():
+@click.option('--force/--no-force', default=False, help="Force the cluster to go down even if terminate protection is enabled")
+def down(force):
     """
     destroys an existing cluster
     """
     try:
         cloud_config = CloudConfig()
         cloud_controller = CloudController(cloud_config)
-        cloud_controller.down()
+        cloud_controller.down(force)
     except CloudComposeException as ex:
         print ex.message
 

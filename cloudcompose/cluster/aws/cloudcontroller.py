@@ -48,7 +48,7 @@ class CloudController:
         else:
             self._create_instances(block_device_map, cloud_init)
 
-    def down(self):
+    def down(self, force=False):
         if self.aws.get('asg'):
             asg_name = self.cluster_name
             try:
@@ -68,8 +68,15 @@ class CloudController:
             ips = [node['ip'] for node in self.aws.get('nodes', [])]
             instance_ids = self._instance_ids_from_private_ip(ips)
             if len(instance_ids) > 0:
+                if force:
+                    self._disable_terminate_protection(instance_ids)
                 self._ec2_terminate_instances(InstanceIds=instance_ids)
                 print 'terminated %s' % ','.join(instance_ids)
+
+    def _disable_terminate_protection(self, instance_ids):
+        for instance_id in instance_ids:
+            self._ec2_modify_instance_attribute(InstanceId=instance_id, DisableApiTermination={"Value": False})
+
 
     def cleanup(self):
         if self.aws.get('asg'):
@@ -454,6 +461,10 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_terminate_instances(self, **kwargs):
         return self.ec2.terminate_instances(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_modify_instance_attribute(self, **kwargs):
+        return self.ec2.modify_instance_attribute(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_describe_instances(self, **kwargs):
