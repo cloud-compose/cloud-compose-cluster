@@ -47,6 +47,18 @@ class EBSController:
         return response.get('Snapshots', [])
 
     def _create_volume_config(self, volume, default_device, use_snapshots):
+        if volume.get('ephemeral', False):
+            return self._create_ephemeral_volume_config(volume)
+        else:
+            return self._create_ebs_volume_config(volume, default_device, use_snapshots)
+
+    def _create_ephemeral_volume_config(self, volume):
+        return {
+            "DeviceName": volume['block'],
+            "VirtualName": volume['name']
+        }
+
+    def _create_ebs_volume_config(self, volume, default_device, use_snapshots):
         device = volume.get('block', default_device)
         volume_config = {
             "DeviceName": device,
