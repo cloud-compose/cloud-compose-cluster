@@ -49,6 +49,9 @@ cluster:
     volumes:
       - name: root
         size: 30G
+      - name: ephemeral0 
+        block: /dev/xvdb
+        ephemeral: true
       - name: docker
         size: 20G
         block: /dev/xvdz
