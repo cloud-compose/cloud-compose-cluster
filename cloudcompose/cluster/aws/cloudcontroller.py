@@ -12,6 +12,11 @@ from time import sleep
 import time, datetime
 from retrying import retry
 from pprint import pprint
+from gzip import GzipFile
+from base64 import b64encode
+from StringIO import StringIO
+
+MAX_CLOUD_INIT_LENGTH = 16000
 
 class CloudController:
     def __init__(self, cloud_config, ec2_client=None, asg_client=None):
@@ -236,8 +241,7 @@ class CloudController:
             kwargs['PrivateIpAddress'] = private_ip
 
             if cloud_init:
-                cloud_init_script = cloud_init.build(self.config_data, node_id=node['id'])
-                kwargs['UserData'] = cloud_init_script
+                kwargs['UserData'] = self._cloud_init_build(cloud_init, node_id=node['id'])
 
             max_retries = 6
             retries = 0
@@ -261,6 +265,16 @@ class CloudController:
             if created:
                 prefix = 'created'
             print "%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip)
+
+    def _cloud_init_build(self, cloud_init, **kwargs):
+        cloud_init_script = cloud_init.build(self.config_data, **kwargs)
+        if len(cloud_init_script) > MAX_CLOUD_INIT_LENGTH:
+            output = StringIO()
+            with GzipFile(mode='wb', fileobj=output) as gzfile:
+                gzfile.write(cloud_init_script)
+            cloud_init_script = "#!/bin/sh\necho '%s' | base64 -d | gunzip | sh" % b64encode(output.getvalue())
+
+        return cloud_init_script
 
     def _create_instance_policy(self, instance_policy):
         controller = InstancePolicyController(self.cluster_name)
@@ -303,7 +317,7 @@ class CloudController:
         lc_name      = "%s-%s" % (cluster_name, string_time)
 
         if cloud_init:
-            cloud_init_script = cloud_init.build(self.config_data, node_id=cluster_name)
+            cloud_init_script = self._cloud_init_build(cloud_init, node_id=cluster_name)
 
 
         launch_config_args = {
