@@ -1,4 +1,5 @@
 from os import environ
+import sys
 from os.path import abspath, dirname, join, isfile
 import logging
 from cloudcompose.exceptions import CloudComposeException
@@ -250,7 +251,7 @@ class CloudController:
                 try:
                     instance_id, created = self._ec2_run_instances(private_ip, **kwargs)
                     if instance_id:
-                        instances[node['id']] = (instance_id, private_ip, created)
+                        instances[node['id']] = (instance_id, private_ip, created, node.get("eip"), self.aws.get("source_dest_check", True))
                     break
                 except botocore.exceptions.ClientError as ex:
                     print(ex.response["Error"]["Message"])
@@ -259,12 +260,50 @@ class CloudController:
             instance_id = instance_data[0]
             private_ip = instance_data[1]
             created = instance_data[2]
+            elastic_ip = instance_data[3]
+            source_dest_check = instance_data[4]
+
             instance_name = "%s-%s" % (self.cluster_name, node_id)
             self._tag_instance(self.aws.get("tags", {}), node_id, instance_id)
+            if elastic_ip:
+                self._associate_eip(instance_id, elastic_ip)
+            if not source_dest_check:
+                self._disable_source_dest_check(instance_id)
             prefix = 'skipping'
             if created:
                 prefix = 'created'
             print "%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip)
+
+    def _disable_source_dest_check(self, instance_id):
+        self._wait_for_running(instance_id)
+        self._ec2_modify_instance_attribute(InstanceId=instance_id, SourceDestCheck={'Value': False})
+
+    def _associate_eip(self, instance_id, allocation_id):
+        self._wait_for_running(instance_id)
+        self._ec2_associate_address(InstanceId=instance_id, AllocationId=allocation_id, AllowReassociation=False)
+
+    def _wait_for_running(self, instance_id):
+        status = 'pending'
+        sys.stdout.write("%s is pending start" % instance_id)
+        sys.stdout.flush()
+        while status == 'pending':
+            status = self._instance_status(instance_id)
+            time.sleep(1)
+            sys.stdout.write('.')
+            sys.stdout.flush()
+        print ""
+
+    def _instance_status(self, instance_id):
+        filters = [
+            {
+                "Name": "instance-id",
+                "Values": [instance_id]
+            }
+        ]
+        instances = self._ec2_describe_instances(Filters=filters)["Reservations"]
+        if len(instances) != 1:
+            raise Exception("Expected one instance for %s and got %s" % (instance_id, len(instances)))
+        return instances[0]["Instances"][0]["State"]["Name"]
 
     def _cloud_init_build(self, cloud_init, **kwargs):
         cloud_init_script = cloud_init.build(self.config_data, **kwargs)
@@ -487,6 +526,14 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_describe_images(self, **kwargs):
         return self.ec2.describe_images(**kwargs)['Images']
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_modify_instance_attribute(self, **kwargs):
+        return self.ec2.modify_instance_attribute(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _ec2_associate_address(self, **kwargs):
+        return self.ec2.associate_address(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _describe_asg(self, name):
