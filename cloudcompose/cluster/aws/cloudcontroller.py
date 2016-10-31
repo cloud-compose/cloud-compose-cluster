@@ -180,7 +180,7 @@ class CloudController:
         ami = self.aws['ami']
         keypair = self.aws['keypair']
         security_groups = self.security_groups()
-        instance_type = self.aws['instance_type']
+        instance_type = self.aws.get('instance_type', 't2.medium')
         terminate_protection = self.aws.get('terminate_protection', True)
         detailed_monitoring = self.aws.get('detailed_monitoring', False)
         ebs_optimized = self.aws.get('ebs_optimized', False)
@@ -358,12 +358,16 @@ class CloudController:
         if cloud_init:
             cloud_init_script = self._cloud_init_build(cloud_init, node_id=cluster_name)
 
+        instance_type = self.aws.get('instance_type', 't2.medium')
+        existing_instance_type = self._existing_instance_type_from_asg(self.cluster_name)
+        if existing_instance_type:
+            instance_type = existing_instance_type
 
         launch_config_args = {
             "LaunchConfigurationName": lc_name,
             "ImageId": self.aws['ami'],
             "SecurityGroups": self.security_groups(),
-            "InstanceType": self.aws['instance_type'],
+            "InstanceType": instance_type,
             "UserData": cloud_init_script,
             "KeyName": self.aws['keypair'],
             "EbsOptimized": self.aws.get("ebs_optimized", False),
@@ -378,6 +382,16 @@ class CloudController:
             launch_config_args['IamInstanceProfile'] = self.cluster_name
 
         return launch_config_args
+
+    def _existing_instance_type_from_asg(self, cluster_name):
+        for asg in self._asg_describe_auto_scaling_groups(AutoScalingGroupNames=[cluster_name]).get('AutoScalingGroups', []):
+            lc_name = asg.get('LaunchConfigurationName', None)
+            if lc_name:
+                for launch_config in self._asg_describe_launch_configurations(LaunchConfigurationNames=[lc_name]).get('LaunchConfigurations', []):
+                    instance_type = launch_config.get('InstanceType', None)
+                    if instance_type:
+                        return instance_type
+        return None
 
     def _build_launch_config(self, block_device_map, cloud_init):
         kwargs = self._launch_config_args(block_device_map, cloud_init)
@@ -490,6 +504,14 @@ class CloudController:
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _ec2_delete_tags(self, **kwargs):
         return self.ec2.delete_tags(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_describe_auto_scaling_groups(self, **kwargs):
+        return self.asg.describe_auto_scaling_groups(**kwargs)
+
+    @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
+    def _asg_describe_launch_configurations(self, **kwargs):
+        return self.asg.describe_launch_configurations(**kwargs)
 
     @retry(retry_on_exception=_is_retryable_exception, stop_max_delay=10000, wait_exponential_multiplier=500, wait_exponential_max=2000)
     def _asg_create_or_update_tags(self, **kwargs):
