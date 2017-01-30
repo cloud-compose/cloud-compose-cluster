@@ -359,9 +359,6 @@ class CloudController:
             cloud_init_script = self._cloud_init_build(cloud_init, node_id=cluster_name)
 
         instance_type = self.aws.get('instance_type', 't2.medium')
-        existing_instance_type = self._existing_instance_type_from_asg(self.cluster_name)
-        if existing_instance_type:
-            instance_type = existing_instance_type
 
         launch_config_args = {
             "LaunchConfigurationName": lc_name,
