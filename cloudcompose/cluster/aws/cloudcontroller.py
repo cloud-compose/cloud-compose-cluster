@@ -311,7 +311,7 @@ class CloudController:
             output = StringIO()
             with GzipFile(mode='wb', fileobj=output) as gzfile:
                 gzfile.write(cloud_init_script)
-            cloud_init_script = "#!/bin/sh\necho '%s' | base64 -d | gunzip | sh" % b64encode(output.getvalue())
+            cloud_init_script = "#!/bin/bash\necho '%s' | base64 -d | gunzip | /bin/bash" % b64encode(output.getvalue())
 
         return cloud_init_script
 
