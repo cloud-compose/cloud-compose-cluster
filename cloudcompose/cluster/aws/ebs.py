@@ -4,8 +4,9 @@ from cloudcompose.exceptions import CloudComposeException
 
 from retrying import retry
 class EBSController:
-    def __init__(self, ec2, cluster_name):
+    def __init__(self, ec2, cluster_name, silent=False):
         self.ec2 = ec2
+        self.silent = silent
         self.cluster_name = cluster_name
 
     def block_device_map(self, volumes, default_device, use_snapshots):
@@ -91,7 +92,8 @@ class EBSController:
             volume_config["Ebs"]["SnapshotId"] = snapshot_id
             if 'snapshot' not in volume:
                 volume['snapshot'] = snapshot_id
-            print "starting cluster from snapshot %s" % snapshot_id
+            if not self.silent:
+                print "starting cluster from snapshot %s" % snapshot_id
 
     def _format_size(self, size):
         size_in_gb = 0

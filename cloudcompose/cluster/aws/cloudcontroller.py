@@ -20,10 +20,11 @@ from StringIO import StringIO
 MAX_CLOUD_INIT_LENGTH = 16000
 
 class CloudController:
-    def __init__(self, cloud_config, ec2_client=None, asg_client=None):
+    def __init__(self, cloud_config, ec2_client=None, asg_client=None, silent=False):
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
         self.cloud_config = cloud_config
+        self.silent = silent
         self.config_data = cloud_config.config_data('cluster')
         self.aws = self.config_data['aws']
         self.log_driver = self.config_data.get('logging', {}).get('driver')
@@ -63,10 +64,12 @@ class CloudController:
                                         MinSize=0,
                                         MaxSize=0,
                                         DesiredCapacity=0)
-                print 'auto scaling group %s size is now 0' % asg_name
+                if not self.silent:
+                    print 'auto scaling group %s size is now 0' % asg_name
             except botocore.exceptions.ClientError as ex:
                 if ex.response["Error"]["Code"] == 'ValidationError':
-                    print 'auto scaling group %s does not exist' % asg_name
+                    if not self.silent:
+                        print 'auto scaling group %s does not exist' % asg_name
                 else:
                     raise ex
 
@@ -77,7 +80,8 @@ class CloudController:
                 if force:
                     self._disable_terminate_protection(instance_ids)
                 self._ec2_terminate_instances(InstanceIds=instance_ids)
-                print 'terminated %s' % ','.join(instance_ids)
+                if not self.silent:
+                    print 'terminated %s' % ','.join(instance_ids)
 
     def _disable_terminate_protection(self, instance_ids):
         for instance_id in instance_ids:
@@ -93,17 +97,21 @@ class CloudController:
             asg_instances = len(asg_details["AutoScalingGroups"][0]["Instances"])
 
             if asg_instances != 0:
-                print 'unable to delete autoscaling group %s because of %s active instances' % (asg_name, asg_instances)
-                print 'run cloud-compose cluster down first or wait for instances to terminate'
+                if not self.silent:
+                    print 'unable to delete autoscaling group %s because of %s active instances' % (asg_name, asg_instances)
+                    print 'run cloud-compose cluster down first or wait for instances to terminate'
             else:
                 self._delete_asg(asg_name)
-                print 'deleted autoscaling group %s' % asg_name
+                if not self.silent:
+                    print 'deleted autoscaling group %s' % asg_name
 
                 self._delete_launch_config(asg_lc)
-                print 'deleted launch configuration %s' % asg_lc
+                if not self.silent:
+                    print 'deleted launch configuration %s' % asg_lc
         else:
-            print 'cleanup has no effect for non-ASG clusters'
-            print 'use cloud-compose cluster down to remove instances'
+            if not self.silent:
+                print 'cleanup has no effect for non-ASG clusters'
+                print 'use cloud-compose cluster down to remove instances'
 
     def _resolve_ami_name(self, upgrade_image):
         if self.aws['ami'].startswith('ami-'):
@@ -123,7 +131,8 @@ class CloudController:
                 message = 'created on %s' % creation_date
 
         if ami:
-            print 'ami %s resolves to %s %s' % (self.aws['ami'], ami, message)
+            if not self.silent:
+                print 'ami %s resolves to %s %s' % (self.aws['ami'], ami, message)
         else:
             raise CloudComposeException('Unable to resolve AMI %s' % self.aws['ami'])
 
@@ -151,7 +160,7 @@ class CloudController:
                     return instance['ImageId']
 
     def _block_device_map(self, use_snapshots):
-        controller = EBSController(self.ec2, self.cluster_name)
+        controller = EBSController(self.ec2, self.cluster_name, silent=self.silent)
         default_device = self._find_device_from_ami(self.aws['ami'])
         return controller.block_device_map(self.aws['volumes'], default_device, use_snapshots)
 
@@ -254,7 +263,8 @@ class CloudController:
                         instances[node['id']] = (instance_id, private_ip, created, node.get("eip"), self.aws.get("source_dest_check", True))
                     break
                 except botocore.exceptions.ClientError as ex:
-                    print(ex.response["Error"]["Message"])
+                    if not self.silent:
+                        print(ex.response["Error"]["Message"])
 
         for node_id, instance_data in instances.iteritems():
             instance_id = instance_data[0]
@@ -272,7 +282,8 @@ class CloudController:
             prefix = 'skipping'
             if created:
                 prefix = 'created'
-            print "%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip)
+            if not self.silent:
+                print "%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip)
 
     def _disable_source_dest_check(self, instance_id):
         self._wait_for_running(instance_id)
@@ -284,14 +295,19 @@ class CloudController:
 
     def _wait_for_running(self, instance_id):
         status = 'pending'
-        sys.stdout.write("%s is pending start" % instance_id)
-        sys.stdout.flush()
+        if not self.silent:
+            sys.stdout.write("%s is pending start" % instance_id)
+            sys.stdout.flush()
+
         while status == 'pending':
             status = self._instance_status(instance_id)
             time.sleep(1)
-            sys.stdout.write('.')
-            sys.stdout.flush()
-        print ""
+            if not self.silent:
+                sys.stdout.write('.')
+                sys.stdout.flush()
+
+        if not self.silent:
+            print ""
 
     def _instance_status(self, instance_id):
         filters = [
@@ -435,7 +451,8 @@ class CloudController:
                     instance_id = instance['InstanceId']
                     return instance_id, False
                 else:
-                    print('%s in use but not by an instance' % private_ip)
+                    if not self.silent:
+                        print('%s in use but not by an instance' % private_ip)
             raise ex
         return None, False
 
@@ -450,10 +467,12 @@ class CloudController:
     def _asg_create(self, **kwargs):
         try:
             self._asg_create_auto_scaling_group(**kwargs)
-            print 'created auto scaling group %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
+            if not self.silent:
+                print 'created auto scaling group %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "AlreadyExists":
-                print 'updated auto scaling group %s launch config %s' % (self.cluster_name, kwargs['LaunchConfigurationName'])
+                if not self.silent:
+                    print 'updated auto scaling group %s launch config %s' % (self.cluster_name, kwargs['LaunchConfigurationName'])
                 self._asg_update(**kwargs)
             else:
                 raise ex
