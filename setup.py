@@ -4,7 +4,7 @@ import warnings
 
 setup(
     name='cloud-compose-cluster',
-    version='0.12.3',
+    version='0.13.0',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
@@ -20,7 +20,8 @@ setup(
         'python-dateutil>=2.5.3',
         'PyYAML>=3.11',
         'retrying>=1.3.3',
-        'six>=1.10.0'
+        'six>=1.10.0',
+        'pytz>=2016.10'
     ],
     setup_requires=[
         'pytest-runner'
@@ -32,7 +33,7 @@ setup(
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
     url="https://github.com/cloud-compose/cloud-compose-cluster",
-    download_url = "https://github.com/cloud-compose/cloud-compose-cluster/tarball/v0.12.3",
+    download_url = "https://github.com/cloud-compose/cloud-compose-cluster/tarball/v0.13.0",
     keywords = ['cloud', 'compose', 'aws'],
     classifiers = []
 )

@@ -9,35 +9,36 @@ class EBSController:
         self.silent = silent
         self.cluster_name = cluster_name
 
-    def block_device_map(self, volumes, default_device, use_snapshots):
+    def block_device_map(self, volumes, default_device, use_snapshots, snapshot_cluster=None, snapshot_time=None):
         block_device_map = []
         for volume in volumes:
             file_system = volume.get('file_system')
             if file_system and file_system.lower() in ['nfs', 'nfs4']:
                 continue
-            block_device_map.append(self._create_volume_config(volume, default_device, use_snapshots))
+            block_device_map.append(self._create_volume_config(volume, default_device, use_snapshots, snapshot_cluster, snapshot_time))
 
         return block_device_map
 
-    def find_latest_snapshot(self, device):
+    def find_latest_snapshot(self, device, snapshot_cluster=None, snapshot_time=None):
+        cluster_name = self.cluster_name
+        if snapshot_cluster:
+            cluster_name = snapshot_cluster
+
         snapshot_names = []
-        snapshot_ids = {}
+        snapshot_id = None
+        snapshot_start_time = None
         for snapshot in self._ec2_describe_snapshots(Filters=[{"Name": "status",
                                                                "Values": ["completed"]},
                                                               {"Name": "tag:ClusterName",
-                                                               "Values": [self.cluster_name]},
+                                                               "Values": [cluster_name]},
                                                               {"Name": "tag:DeviceName",
                                                                "Values": [device]}]):
-            for tag in snapshot["Tags"]:
-                if "Name" in tag["Key"]:
-                    snapshot_names.append(tag["Value"])
-                    snapshot_ids[tag["Value"]] = snapshot["SnapshotId"]
+            if snapshot_time is None or snapshot["StartTime"] <= snapshot_time:
+                if snapshot_id is None or snapshot_start_time < snapshot["StartTime"]:
+                    snapshot_id = snapshot["SnapshotId"]
+                    snapshot_start_time = snapshot["StartTime"]
 
-        if len(snapshot_names) == 0:
-            return None
-        snapshot_names.sort()
-        last_snapshot_name = snapshot_names.pop()
-        return snapshot_ids[last_snapshot_name]
+        return snapshot_id, snapshot_start_time
 
     def _is_retryable_exception(exception):
         return not isinstance(exception, botocore.exceptions.ClientError)
@@ -47,11 +48,11 @@ class EBSController:
         response = self.ec2.describe_snapshots(**kwargs)
         return response.get('Snapshots', [])
 
-    def _create_volume_config(self, volume, default_device, use_snapshots):
+    def _create_volume_config(self, volume, default_device, use_snapshots, snapshot_cluster, snapshot_time):
         if volume.get('ephemeral', False):
             return self._create_ephemeral_volume_config(volume)
         else:
-            return self._create_ebs_volume_config(volume, default_device, use_snapshots)
+            return self._create_ebs_volume_config(volume, default_device, use_snapshots, snapshot_cluster, snapshot_time)
 
     def _create_ephemeral_volume_config(self, volume):
         return {
@@ -59,7 +60,7 @@ class EBSController:
             "VirtualName": volume['name']
         }
 
-    def _create_ebs_volume_config(self, volume, default_device, use_snapshots):
+    def _create_ebs_volume_config(self, volume, default_device, use_snapshots, snapshot_cluster, snapshot_time):
         device = volume.get('block', default_device)
         volume_config = {
             "DeviceName": device,
@@ -80,20 +81,20 @@ class EBSController:
             volume_config['Ebs']['Iops'] = iops
 
         if use_snapshots:
-            self._add_snapshot_id(volume_config, volume, device)
+            self._add_snapshot_id(volume_config, volume, device, snapshot_cluster, snapshot_time)
 
         return volume_config
 
-    def _add_snapshot_id(self, volume_config, volume, device):
+    def _add_snapshot_id(self, volume_config, volume, device, snapshot_cluster, snapshot_time):
         snapshot_id = volume.get('snapshot', None)
         if not snapshot_id:
-            snapshot_id = self.find_latest_snapshot(device)
+            snapshot_id, snapshot_start_time = self.find_latest_snapshot(device, snapshot_cluster, snapshot_time)
         if snapshot_id:
             volume_config["Ebs"]["SnapshotId"] = snapshot_id
             if 'snapshot' not in volume:
                 volume['snapshot'] = snapshot_id
             if not self.silent:
-                print "starting cluster from snapshot %s" % snapshot_id
+                print "starting cluster from snapshot %s created on %s" % (snapshot_id, snapshot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z'))
 
     def _format_size(self, size):
         size_in_gb = 0

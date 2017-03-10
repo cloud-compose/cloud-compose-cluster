@@ -16,6 +16,9 @@ from pprint import pprint
 from gzip import GzipFile
 from base64 import b64encode
 from StringIO import StringIO
+from dateutil.parser import parse
+import pytz
+from dateutil.tz import tzlocal
 
 MAX_CLOUD_INIT_LENGTH = 16000
 
@@ -45,15 +48,28 @@ class CloudController:
                             aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
                             region_name=environ.get('AWS_REGION', 'us-east-1'))
 
-    def up(self, cloud_init=None, use_snapshots=True, upgrade_image=False):
+    def up(self, cloud_init=None, use_snapshots=True, upgrade_image=False, snapshot_cluster=None, snapshot_time=None):
+        if snapshot_time and use_snapshots:
+            snapshot_time = self._parse_localized_time(snapshot_time)
+            if not self.silent:
+                print 'restoring from snapshot created on or before %s' % snapshot_time.strftime('%Y-%m-%d %H:%M:%S %Z')
+
         self.aws['ami'] = self._resolve_ami_name(upgrade_image)
-        block_device_map = self._block_device_map(use_snapshots)
+        block_device_map = self._block_device_map(use_snapshots, snapshot_cluster, snapshot_time)
         if self.log_driver == 'awslogs':
             self._create_log_group(self.log_group, self.log_retention)
         if self.aws.get('asg'):
             self._create_asg(block_device_map, cloud_init)
         else:
             self._create_instances(block_device_map, cloud_init)
+
+    def _parse_localized_time(self, snapshot_time):
+        snapshot_time = parse(snapshot_time)
+        if snapshot_time.tzinfo is None or snapshot_time.tzinfo.utcoffset(snapshot_time) is None:
+            snapshot_time = snapshot_time.replace(tzinfo=tzlocal())
+
+        snapshot_time = snapshot_time.astimezone(pytz.UTC)
+        return snapshot_time
 
     def down(self, force=False):
         if self.aws.get('asg'):
@@ -159,10 +175,10 @@ class CloudController:
                 if 'ImageId' in instance:
                     return instance['ImageId']
 
-    def _block_device_map(self, use_snapshots):
+    def _block_device_map(self, use_snapshots, snapshot_cluster, snapshot_time):
         controller = EBSController(self.ec2, self.cluster_name, silent=self.silent)
         default_device = self._find_device_from_ami(self.aws['ami'])
-        return controller.block_device_map(self.aws['volumes'], default_device, use_snapshots)
+        return controller.block_device_map(self.aws['volumes'], default_device, use_snapshots, snapshot_cluster, snapshot_time)
 
     def _instance_ids_from_private_ip(self, ips):
         instance_ids = []

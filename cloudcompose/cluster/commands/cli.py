@@ -12,7 +12,9 @@ def cli():
 @click.option('--cloud-init/--no-cloud-init', default=True, help="Initialize the instance with a cloud init script")
 @click.option('--use-snapshots/--no-use-snapshots', default=True, help="Use snapshots to initialize volumes with existing data")
 @click.option('--upgrade-image/--no-upgrade-image', default=False, help="Upgrade the image to the newest version instead of keeping the cluster consistent")
-def up(cloud_init, use_snapshots, upgrade_image):
+@click.option('--snapshot-cluster', help="Cluster name to use for snapshot retrieval. It defaults to the current cluster name.")
+@click.option('--snapshot-time', help="Use a snapshot on or before this time. It defaults to the current time")
+def up(cloud_init, use_snapshots, upgrade_image, snapshot_cluster, snapshot_time):
     """
     creates a new cluster
     """
@@ -24,7 +26,7 @@ def up(cloud_init, use_snapshots, upgrade_image):
             ci = CloudInit()
 
         cloud_controller = CloudController(cloud_config)
-        cloud_controller.up(ci, use_snapshots, upgrade_image)
+        cloud_controller.up(ci, use_snapshots, upgrade_image, snapshot_cluster, snapshot_time)
     except CloudComposeException as ex:
         print ex.message
 
