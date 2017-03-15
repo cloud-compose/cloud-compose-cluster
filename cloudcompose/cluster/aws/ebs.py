@@ -94,7 +94,10 @@ class EBSController:
             if 'snapshot' not in volume:
                 volume['snapshot'] = snapshot_id
             if not self.silent:
-                print "starting cluster from snapshot %s created on %s" % (snapshot_id, snapshot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z'))
+                if snapshot_id:
+                    print "starting cluster from snapshot %s created on %s" % (snapshot_id)
+                else:
+                    print "starting cluster from snapshot created on %s" % (snapshot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z'))
 
     def _format_size(self, size):
         size_in_gb = 0
