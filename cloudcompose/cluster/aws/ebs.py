@@ -95,7 +95,7 @@ class EBSController:
                 volume['snapshot'] = snapshot_id
             if not self.silent:
                 if snapshot_id:
-                    print "starting cluster from snapshot %s created on %s" % (snapshot_id)
+                    print "starting cluster from snapshot %s" % (snapshot_id)
                 else:
                     print "starting cluster from snapshot created on %s" % (snapshot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z'))
 
@@ -110,4 +110,3 @@ class EBSController:
             return quantity
         elif units.lower() == 'm':
             return quantity / 1000
-
