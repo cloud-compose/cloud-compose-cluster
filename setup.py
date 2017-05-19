@@ -4,7 +4,7 @@ import warnings
 
 setup(
     name='cloud-compose-cluster',
-    version='0.13.1',
+    version='0.14.0',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
@@ -34,7 +34,7 @@ setup(
     author="Patrick Cullen and the WaPo platform tools team",
     author_email="opensource@washingtonpost.com",
     url="https://github.com/cloud-compose/cloud-compose-cluster",
-    download_url = "https://github.com/cloud-compose/cloud-compose-cluster/tarball/v0.13.0",
+    download_url = "https://github.com/cloud-compose/cloud-compose-cluster/tarball/v0.14.0",
     keywords = ['cloud', 'compose', 'aws'],
     classifiers = []
 )
