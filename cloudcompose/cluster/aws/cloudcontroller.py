@@ -1,11 +1,18 @@
+from __future__ import print_function
+from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 from os import environ
 import sys
 from os.path import abspath, dirname, join, isfile
 import logging
 from cloudcompose.exceptions import CloudComposeException
-from iam import InstancePolicyController
-from ebs import EBSController
-from cloudwatch import LogsController
+from .iam import InstancePolicyController
+from .ebs import EBSController
+from .cloudwatch import LogsController
 from cloudcompose.util import require_env_var
 import boto3
 import botocore
@@ -15,14 +22,14 @@ from retrying import retry
 from pprint import pprint
 from gzip import GzipFile
 from base64 import b64encode
-from StringIO import StringIO
+from io import StringIO
 from dateutil.parser import parse
 import pytz
 from dateutil.tz import tzlocal
 
 MAX_CLOUD_INIT_LENGTH = 16000
 
-class CloudController:
+class CloudController(object):
     def __init__(self, cloud_config, ec2_client=None, asg_client=None, silent=False):
         logging.basicConfig(level=logging.ERROR)
         self.logger = logging.getLogger(__name__)
@@ -52,7 +59,7 @@ class CloudController:
         if snapshot_time and use_snapshots:
             snapshot_time = self._parse_localized_time(snapshot_time)
             if not self.silent:
-                print 'restoring from snapshot created on or before %s' % snapshot_time.strftime('%Y-%m-%d %H:%M:%S %Z')
+                print('restoring from snapshot created on or before %s' % snapshot_time.strftime('%Y-%m-%d %H:%M:%S %Z'))
 
         self.aws['ami'] = self._resolve_ami_name(upgrade_image)
         block_device_map = self._block_device_map(use_snapshots, snapshot_cluster, snapshot_time)
@@ -81,11 +88,11 @@ class CloudController:
                                         MaxSize=0,
                                         DesiredCapacity=0)
                 if not self.silent:
-                    print 'auto scaling group %s size is now 0' % asg_name
+                    print('auto scaling group %s size is now 0' % asg_name)
             except botocore.exceptions.ClientError as ex:
                 if ex.response["Error"]["Code"] == 'ValidationError':
                     if not self.silent:
-                        print 'auto scaling group %s does not exist' % asg_name
+                        print('auto scaling group %s does not exist' % asg_name)
                 else:
                     raise ex
 
@@ -97,7 +104,7 @@ class CloudController:
                     self._disable_terminate_protection(instance_ids)
                 self._ec2_terminate_instances(InstanceIds=instance_ids)
                 if not self.silent:
-                    print 'terminated %s' % ','.join(instance_ids)
+                    print('terminated %s' % ','.join(instance_ids))
 
     def _disable_terminate_protection(self, instance_ids):
         for instance_id in instance_ids:
@@ -114,20 +121,20 @@ class CloudController:
 
             if asg_instances != 0:
                 if not self.silent:
-                    print 'unable to delete autoscaling group %s because of %s active instances' % (asg_name, asg_instances)
-                    print 'run cloud-compose cluster down first or wait for instances to terminate'
+                    print('unable to delete autoscaling group %s because of %s active instances' % (asg_name, asg_instances))
+                    print('run cloud-compose cluster down first or wait for instances to terminate')
             else:
                 self._delete_asg(asg_name)
                 if not self.silent:
-                    print 'deleted autoscaling group %s' % asg_name
+                    print('deleted autoscaling group %s' % asg_name)
 
                 self._delete_launch_config(asg_lc)
                 if not self.silent:
-                    print 'deleted launch configuration %s' % asg_lc
+                    print('deleted launch configuration %s' % asg_lc)
         else:
             if not self.silent:
-                print 'cleanup has no effect for non-ASG clusters'
-                print 'use cloud-compose cluster down to remove instances'
+                print('cleanup has no effect for non-ASG clusters')
+                print('use cloud-compose cluster down to remove instances')
 
     def _resolve_ami_name(self, upgrade_image):
         if self.aws['ami'].startswith('ami-'):
@@ -148,7 +155,7 @@ class CloudController:
 
         if ami:
             if not self.silent:
-                print 'ami %s resolves to %s %s' % (self.aws['ami'], ami, message)
+                print('ami %s resolves to %s %s' % (self.aws['ami'], ami, message))
         else:
             raise CloudComposeException('Unable to resolve AMI %s' % self.aws['ami'])
 
@@ -282,7 +289,7 @@ class CloudController:
                     if not self.silent:
                         print(ex.response["Error"]["Message"])
 
-        for node_id, instance_data in instances.iteritems():
+        for node_id, instance_data in instances.items():
             instance_id = instance_data[0]
             private_ip = instance_data[1]
             created = instance_data[2]
@@ -299,7 +306,7 @@ class CloudController:
             if created:
                 prefix = 'created'
             if not self.silent:
-                print "%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip)
+                print("%s %s %s (%s)" % (prefix, instance_id, instance_name, private_ip))
 
     def _disable_source_dest_check(self, instance_id):
         self._wait_for_running(instance_id)
@@ -323,7 +330,7 @@ class CloudController:
                 sys.stdout.flush()
 
         if not self.silent:
-            print ""
+            print("")
 
     def _instance_status(self, instance_id):
         filters = [
@@ -373,7 +380,7 @@ class CloudController:
             }
         ]
 
-        for key, value in tags.items():
+        for key, value in list(tags.items()):
             instance_tags.append({
                 "Key": key,
                 "Value" : str(value),
@@ -484,11 +491,11 @@ class CloudController:
         try:
             self._asg_create_auto_scaling_group(**kwargs)
             if not self.silent:
-                print 'created auto scaling group %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity'])
+                print('created auto scaling group %s with size %s' % (self.cluster_name, kwargs['DesiredCapacity']))
         except botocore.exceptions.ClientError as ex:
             if ex.response["Error"]["Code"] == "AlreadyExists":
                 if not self.silent:
-                    print 'updated auto scaling group %s launch config %s' % (self.cluster_name, kwargs['LaunchConfigurationName'])
+                    print('updated auto scaling group %s launch config %s' % (self.cluster_name, kwargs['LaunchConfigurationName']))
                 self._asg_update(**kwargs)
             else:
                 raise ex

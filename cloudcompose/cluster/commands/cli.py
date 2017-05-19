@@ -1,3 +1,4 @@
+from __future__ import print_function
 import click
 from cloudcompose.cluster.cloudinit import CloudInit
 from cloudcompose.cluster.aws.cloudcontroller import CloudController
@@ -28,7 +29,7 @@ def up(cloud_init, use_snapshots, upgrade_image, snapshot_cluster, snapshot_time
         cloud_controller = CloudController(cloud_config)
         cloud_controller.up(ci, use_snapshots, upgrade_image, snapshot_cluster, snapshot_time)
     except CloudComposeException as ex:
-        print ex.message
+        print(ex.message)
 
 @cli.command()
 @click.option('--force/--no-force', default=False, help="Force the cluster to go down even if terminate protection is enabled")
@@ -41,7 +42,7 @@ def down(force):
         cloud_controller = CloudController(cloud_config)
         cloud_controller.down(force)
     except CloudComposeException as ex:
-        print ex.message
+        print(ex.message)
 
 @cli.command()
 def cleanup():
@@ -53,7 +54,7 @@ def cleanup():
         cloud_controller = CloudController(cloud_config)
         cloud_controller.cleanup()
     except CloudComposeException as ex:
-        print ex.message
+        print(ex.message)
 
 @cli.command()
 def build():
@@ -64,6 +65,6 @@ def build():
         cloud_config = CloudConfig()
         config_data = cloud_config.config_data('cluster')
         cloud_init = CloudInit()
-        print cloud_init.build(config_data)
+        print(cloud_init.build(config_data))
     except CloudComposeException as ex:
-        print ex.message
+        print(ex.message)

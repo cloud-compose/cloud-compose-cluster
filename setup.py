@@ -21,7 +21,8 @@ setup(
         'PyYAML>=3.11',
         'retrying>=1.3.3',
         'six>=1.10.0',
-        'pytz>=2016.10'
+        'pytz>=2016.10',
+        'future>=0.16.0'
     ],
     setup_requires=[
         'pytest-runner'

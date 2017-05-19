@@ -1,8 +1,9 @@
+from builtins import object
 import jinja2
 from os.path import join
 from os import environ
 
-class Template:
+class Template(object):
     def __init__(self, search_path):
         if not isinstance(search_path, list):
             search_path = [search_path]
@@ -22,7 +23,7 @@ class Template:
 
     @classmethod
     def _add_environment(cls, template_data):
-        for key in environ.keys():
+        for key in list(environ.keys()):
             if key not in template_data:
                 template_data[key] = environ[key]
 

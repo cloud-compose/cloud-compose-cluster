@@ -1,10 +1,11 @@
+from builtins import object
 import botocore
 import boto3
 from cloudcompose.util import require_env_var
 from retrying import retry
 from os import environ
 
-class LogsController:
+class LogsController(object):
     def __init__(self):
         self.logs = self._get_logs_client()
 

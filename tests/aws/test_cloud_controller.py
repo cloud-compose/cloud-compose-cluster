@@ -1,3 +1,4 @@
+from builtins import object
 from unittest import TestCase
 from cloudcompose.cluster.aws.cloudcontroller import CloudController
 from cloudcompose.config import CloudConfig
@@ -5,10 +6,10 @@ from os.path import abspath, join, dirname
 
 TEST_ROOT = abspath(join(dirname(__file__)))
 
-class MockEC2Client():
+class MockEC2Client(object):
     pass
 
-class MockASGClient():
+class MockASGClient(object):
     pass
 
 class CloudInitTest(TestCase):
