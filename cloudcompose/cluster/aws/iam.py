@@ -1,3 +1,4 @@
+from builtins import object
 import boto3
 import botocore
 from cloudcompose.exceptions import CloudComposeException
@@ -5,7 +6,7 @@ from cloudcompose.util import require_env_var
 from retrying import retry
 from os import environ
 
-class InstancePolicyController:
+class InstancePolicyController(object):
     def __init__(self, cluster_name):
         self.cluster_name = cluster_name
         self.iam = self._get_iam_client()

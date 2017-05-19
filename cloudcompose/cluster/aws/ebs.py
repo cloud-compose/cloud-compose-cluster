@@ -1,9 +1,13 @@
+from __future__ import division
+from __future__ import print_function
+from builtins import object
+from past.utils import old_div
 import boto3
 import botocore
 from cloudcompose.exceptions import CloudComposeException
 
 from retrying import retry
-class EBSController:
+class EBSController(object):
     def __init__(self, ec2, cluster_name, silent=False):
         self.ec2 = ec2
         self.silent = silent
@@ -95,9 +99,9 @@ class EBSController:
                 volume['snapshot'] = snapshot_id
             if not self.silent:
                 if snapshot_id:
-                    print "starting cluster from snapshot %s" % (snapshot_id)
+                    print("starting cluster from snapshot %s" % (snapshot_id))
                 else:
-                    print "starting cluster from snapshot created on %s" % (snapshot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z'))
+                    print("starting cluster from snapshot created on %s" % (snapshot_start_time.strftime('%Y-%m-%d %H:%M:%S %Z')))
 
     def _format_size(self, size):
         size_in_gb = 0
@@ -109,4 +113,4 @@ class EBSController:
         elif units.lower() == 'g':
             return quantity
         elif units.lower() == 'm':
-            return quantity / 1000
+            return old_div(quantity, 1000)

@@ -1,7 +1,8 @@
+from builtins import object
 from cloudcompose.cluster.template import Template
 from os.path import join, isfile, isdir, split
 
-class DockerCompose:
+class DockerCompose(object):
     def __init__(self, search_path=['cloud-compose', '.']):
         self.search_path = search_path
         self.docker_compose_files = ['docker-compose.yml', 'docker-compose.yaml']
