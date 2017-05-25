@@ -139,7 +139,8 @@ class CloudController(object):
     def _resolve_ami_name(self, upgrade_image):
         if self.aws['ami'].startswith('ami-'):
             return self.aws['ami']
-
+        # Set the ami name so we can reference it downstream
+        self.aws['ami_name'] = self.aws['ami']
         ami = None
         message = None
 
