@@ -29,7 +29,7 @@ def up(cloud_init, use_snapshots, upgrade_image, snapshot_cluster, snapshot_time
         cloud_controller = CloudController(cloud_config)
         cloud_controller.up(ci, use_snapshots, upgrade_image, snapshot_cluster, snapshot_time)
     except CloudComposeException as ex:
-        print(ex.message)
+        print(ex)
 
 @cli.command()
 @click.option('--force/--no-force', default=False, help="Force the cluster to go down even if terminate protection is enabled")
@@ -42,7 +42,7 @@ def down(force):
         cloud_controller = CloudController(cloud_config)
         cloud_controller.down(force)
     except CloudComposeException as ex:
-        print(ex.message)
+        print(ex)
 
 @cli.command()
 def cleanup():
@@ -54,7 +54,7 @@ def cleanup():
         cloud_controller = CloudController(cloud_config)
         cloud_controller.cleanup()
     except CloudComposeException as ex:
-        print(ex.message)
+        print(ex)
 
 @cli.command()
 def build():
@@ -67,4 +67,4 @@ def build():
         cloud_init = CloudInit()
         print(cloud_init.build(config_data))
     except CloudComposeException as ex:
-        print(ex.message)
+        print(ex)

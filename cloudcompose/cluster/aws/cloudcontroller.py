@@ -149,7 +149,10 @@ class CloudController(object):
                 message = 'as used on other cluster nodes'
 
         if not ami:
-            ami, creation_date = self._find_ami_by_name_tag()
+            try:
+                ami, creation_date = self._find_ami_by_name_tag()
+            except TypeError:
+                creation_date = None
             if ami:
                 message = 'created on %s' % creation_date
 
