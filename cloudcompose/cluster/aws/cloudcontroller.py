@@ -2,6 +2,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
+from future.builtins import bytes
 from past.builtins import basestring
 from builtins import object
 from os import environ
@@ -21,7 +22,7 @@ from retrying import retry
 from pprint import pprint
 from gzip import GzipFile
 from base64 import b64encode
-from io import StringIO
+from io import BytesIO
 from dateutil.parser import parse
 import pytz
 from dateutil.tz import tzlocal
@@ -350,9 +351,9 @@ class CloudController(object):
     def _cloud_init_build(self, cloud_init, **kwargs):
         cloud_init_script = cloud_init.build(self.config_data, **kwargs)
         if len(cloud_init_script) > MAX_CLOUD_INIT_LENGTH:
-            output = StringIO()
+            output = BytesIO()
             with GzipFile(mode='wb', fileobj=output) as gzfile:
-                gzfile.write(cloud_init_script)
+                gzfile.write(bytes(cloud_init_script, "utf-8"))
             cloud_init_script = "#!/bin/bash\necho '%s' | base64 -d | gunzip | /bin/bash" % b64encode(output.getvalue())
 
         return cloud_init_script
