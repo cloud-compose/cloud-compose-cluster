@@ -354,8 +354,7 @@ class CloudController(object):
             output = BytesIO()
             with GzipFile(mode='wb', fileobj=output) as gzfile:
                 gzfile.write(bytes(cloud_init_script, "utf-8"))
-            cloud_init_script = "#!/bin/bash\necho '%s' | base64 -d | gunzip | /bin/bash" % b64encode(output.getvalue())
-
+            cloud_init_script = "#!/bin/bash\necho '{}' | base64 -d | gunzip | /bin/bash".format(b64encode(output.getvalue()).decode())
         return cloud_init_script
 
     def _create_instance_policy(self, instance_policy):
