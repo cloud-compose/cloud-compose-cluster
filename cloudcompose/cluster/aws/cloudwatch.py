@@ -10,9 +10,7 @@ class LogsController(object):
         self.logs = self._get_logs_client()
 
     def _get_logs_client(self):
-        return boto3.client('logs', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
-                            region_name=environ.get('AWS_REGION', 'us-east-1'))
+        return boto3.client('logs')
 
     def create_log_group(self, log_group, log_retention):
         if not log_retention:

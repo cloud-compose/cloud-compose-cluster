@@ -46,14 +46,10 @@ class CloudController(object):
         self.asg = asg_client or self._get_asg_client()
 
     def _get_ec2_client(self):
-        return boto3.client('ec2', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
-                            region_name=environ.get('AWS_REGION', 'us-east-1'))
+        return boto3.client('ec2')
 
     def _get_asg_client(self):
-        return boto3.client('autoscaling', aws_access_key_id=require_env_var('AWS_ACCESS_KEY_ID'),
-                            aws_secret_access_key=require_env_var('AWS_SECRET_ACCESS_KEY'),
-                            region_name=environ.get('AWS_REGION', 'us-east-1'))
+        return boto3.client('autoscaling')
 
     def up(self, cloud_init=None, use_snapshots=True, upgrade_image=False, snapshot_cluster=None, snapshot_time=None):
         if snapshot_time and use_snapshots:
