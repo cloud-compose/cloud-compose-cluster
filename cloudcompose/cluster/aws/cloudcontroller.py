@@ -46,10 +46,10 @@ class CloudController(object):
         self.asg = asg_client or self._get_asg_client()
 
     def _get_ec2_client(self):
-        return boto3.client('ec2')
+        return boto3.client('ec2', region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def _get_asg_client(self):
-        return boto3.client('autoscaling')
+        return boto3.client('autoscaling', region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def up(self, cloud_init=None, use_snapshots=True, upgrade_image=False, snapshot_cluster=None, snapshot_time=None):
         if snapshot_time and use_snapshots:

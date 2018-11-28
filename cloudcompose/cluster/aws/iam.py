@@ -12,7 +12,7 @@ class InstancePolicyController(object):
         self.iam = self._get_iam_client()
 
     def _get_iam_client(self):
-        return boto3.client('iam')
+        return boto3.client('iam', region_name=environ.get('AWS_REGION', 'us-east-1'))
 
     def create_instance_policy(self, policy):
         self._iam_create_role(RoleName=self.cluster_name, Path="/", AssumeRolePolicyDocument=self._assume_role)
